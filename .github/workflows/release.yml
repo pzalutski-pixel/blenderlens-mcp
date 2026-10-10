@@ -50,10 +50,6 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
 
       # Releases are made from main. A tag on a commit that never reached main would publish code that main does
       # not hold.
@@ -76,19 +72,9 @@ jobs:
       - name: The CHANGELOG has a dated entry for this version
         run: python .github/scripts/release_kit.py changelog "${GITHUB_REF_NAME#v}"
 
-      # The publish workflows need both tokens. They are checked here, before anything is built, so a missing or
-      # wrong token stops the release instead of leaving one registry published and another not.
-      - name: The npm token is in place and npm accepts it
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::NPM_TOKEN is not set. Add it under the repository's Settings > Secrets and variables > Actions."
-            exit 1
-          fi
-          user="$(npm whoami)" || { echo "::error::npm does not accept NPM_TOKEN."; exit 1; }
-          echo "NPM_TOKEN belongs to the npm user $user."
-
+      # The PyPI publish needs this token. It is checked here, before anything is built, so a missing or wrong
+      # token stops the release instead of leaving one registry published and another not. npm needs no token: it
+      # trusts this repository's publish-npm.yml through trusted publishing.
       - name: The PyPI token is in place and is an API token for pypi.org
         env:
           PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}

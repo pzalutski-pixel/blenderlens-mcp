@@ -1,10 +1,10 @@
 name: Publish to npm
 
-# Stages one release's npm tarball on npm: the file attached to its GitHub release, which the release workflow
-# built, checked and attested. npm lets a token stage a publish but not make it live: a maintainer approves the
-# staged version on npmjs.com (Staged Packages, Approve) with two-factor authentication. It runs when the release
-# workflow succeeds, and by hand for a tag, so a failed upload is retried on its own. A version npm already has is
-# left as it is, so a retry is always safe.
+# Publishes one release's npm tarball to npm: the file attached to its GitHub release, which the release workflow
+# built, checked and attested. npm accepts it through trusted publishing: the package's settings on npmjs.com trust
+# this repository's publish-npm.yml, and the workflow proves who it is with GitHub's OIDC token, so no npm token is
+# stored anywhere. It runs when the release workflow succeeds, and by hand for a tag, so a failed upload is retried
+# on its own. A version npm already has is left as it is, so a retry is always safe.
 on:
   workflow_run:
     workflows: [Release]
@@ -34,7 +34,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      id-token: write # npm provenance is signed with the workflow's OIDC token
+      id-token: write # trusted publishing and the provenance statement both use the workflow's OIDC token
       attestations: read # gh attestation verify reads the release files' attestations
     steps:
       # The released commit, never the branch head: the checks below run the release kit as it was released.
@@ -50,8 +50,8 @@ jobs:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
-      # npm stage publish needs npm 11.15.0 or later; the one Node bundles may be older.
-      - name: Use an npm that can stage a publish
+      # Trusted publishing needs npm 11.5.1 or later; the one Node bundles may be older.
+      - name: Use an npm that supports trusted publishing
         run: npm install --global npm@11.17.0
 
       - name: The tag and every manifest carry one version
@@ -63,17 +63,6 @@ jobs:
           version="$(python .github/scripts/release_kit.py versions --tag "$tag")" || { echo "$version"; exit 1; }
           echo "TAG=$tag" >> "$GITHUB_ENV"
           echo "VERSION=$version" >> "$GITHUB_ENV"
-
-      - name: The npm token is in place and npm accepts it
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::NPM_TOKEN is not set. Add it under the repository's Settings > Secrets and variables > Actions."
-            exit 1
-          fi
-          user="$(npm whoami)" || { echo "::error::npm does not accept NPM_TOKEN."; exit 1; }
-          echo "NPM_TOKEN belongs to the npm user $user."
 
       - name: Skip a version npm already has
         run: |
@@ -94,14 +83,12 @@ jobs:
           gh attestation verify "dist/$tarball" --repo "$GITHUB_REPOSITORY"
           python .github/scripts/release_kit.py npm-tarball "dist/$tarball" --version "$VERSION"
 
-      # --provenance publishes a signed statement tying the tarball to this workflow run and this commit. The
-      # token reaches npm through an environment variable that Actions masks, never expanded inline in the command.
-      # The path starts with ./ because npm reads a bare dist/name.tgz as a GitHub repository, owner/name.
-      - name: Stage the checked tarball on npm
+      # --provenance publishes a signed statement tying the tarball to this workflow run and this commit. The path
+      # starts with ./ because npm reads a bare dist/name.tgz as a GitHub repository, owner/name.
+      - name: Publish the checked tarball to npm
         if: env.PUBLISHED != '1'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          npm stage publish "./dist/blenderlens-mcp-$VERSION.tgz" --provenance --access public
-          npm stage list blenderlens-mcp || true
-          echo "::notice::blenderlens-mcp $VERSION is staged on npm. Approve it on npmjs.com (Staged Packages, Approve)."
+          npm publish "./dist/blenderlens-mcp-$VERSION.tgz" --provenance --access public || {
+            echo "::error::npm refused the publish. On npmjs.com, blenderlens-mcp's Settings > Trusted publishing must trust $GITHUB_REPOSITORY, workflow publish-npm.yml, with npm publish allowed."
+            exit 1
+          }

@@ -721,7 +721,6 @@ def test_a_release_starts_from_a_tag_and_verifies_everything_before_it_builds():
     assert 'git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD' in verify, "a tag off main is not refused"
     assert 'release_kit.py versions --tag "$GITHUB_REF_NAME"' in verify
     assert "release_kit.py changelog" in verify
-    assert "NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}" in verify and "npm whoami" in verify
     assert "PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}" in verify and "release_kit.py pypi-token" in verify
     assert "./mcp-publisher validate server.json" in verify
     assert re.search(r"^    needs: verify$", steps["build"], re.MULTILINE)
@@ -794,14 +793,13 @@ def test_pypi_is_published_with_its_token_after_checking_it():
     assert "https://pypi.org/pypi/blenderlens-mcp/$VERSION/json" in job
 
 
-def test_npm_is_published_with_provenance_and_its_token_after_checking_it():
+def test_npm_is_published_through_trusted_publishing_with_provenance():
     job = workflow("publish-npm.yml")
-    assert "npm whoami" in job and job.index("npm whoami") < job.index('npm stage publish "')
-    assert "npm install --global npm@11.17.0" in job, "npm stage publish needs npm 11.15.0 or later"
+    assert "npm install --global npm@11.17.0" in job, "trusted publishing needs npm 11.5.1 or later"
     assert "--provenance" in job and "id-token: write" in job
     # npm reads a path without ./ (dist/name.tgz) as the GitHub repository owner/name.
-    assert re.search(r'npm stage publish "\./', job), "npm would read the tarball path as a GitHub repository"
-    assert "NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}" in job
+    assert re.search(r'npm publish "\./', job), "npm would read the tarball path as a GitHub repository"
+    assert "NPM_TOKEN" not in job and "NODE_AUTH_TOKEN" not in job, "a stored token would bypass trusted publishing"
     assert 'npm view "blenderlens-mcp@$VERSION" version' in job
 
 

@@ -37,9 +37,8 @@
 - the tagged commit is on `main`;
 - the tag equals `__version__`, the add-on manifest's version, `npm/package.json` and `server.json`;
 - `CHANGELOG.md` has a `## [x.y.z] - YYYY-MM-DD` heading for this version ("Unreleased" fails);
-- the `NPM_TOKEN` secret is set and npm accepts it (`npm whoami`), and the `PYPI_API_TOKEN` secret is set and is
-  an API token for pypi.org (`release_kit.py pypi-token` reads the macaroon's location, without printing the
-  token);
+- the `PYPI_API_TOKEN` secret is set and is an API token for pypi.org (`release_kit.py pypi-token` reads the
+  macaroon's location, without printing the token);
 - `mcp-publisher validate` accepts `server.json`.
 
 **The artifacts are built once, checked as built, run in a clean environment, and published byte for byte.**
@@ -63,10 +62,9 @@ manifest carry one version, and skips a version its registry already has, so a r
 - `publish-pypi.yml` checks the token, downloads the wheel and the sdist from the GitHub release, checks them
   against `SHA256SUMS`, their attestations and `release_kit.py dist`, and uploads them with the pinned
   `pypa/gh-action-pypi-publish` action and the `PYPI_API_TOKEN` secret.
-- `publish-npm.yml` checks the token with `npm whoami`, downloads the tarball, checks it the same way and with
-  `release_kit.py npm-tarball`, and runs `npm stage publish <the checked tarball> --provenance`. npm lets a token
-  stage a publish but not make it live, so a maintainer approves the staged version on npmjs.com with two-factor
-  authentication.
+- `publish-npm.yml` downloads the tarball, checks it the same way and with `release_kit.py npm-tarball`, and
+  runs `npm publish <the checked tarball> --provenance`. npm accepts it through trusted publishing: GitHub's OIDC
+  token proves the publish comes from this repository's `publish-npm.yml`, so no npm token is stored.
 - `publish-mcp-registry.yml` waits, up to half an hour, until PyPI and npm both have the version, because the
   registry accepts an entry only for packages that exist. It then publishes with `mcp-publisher` 1.8.1, the same
   pinned version and SHA-256 as the release's check, logged in through GitHub OIDC, and retries while the
@@ -78,7 +76,8 @@ manifest carry one version, and skips a version its registry already has, so a r
 
 **Publishing also needs, outside the repository:**
 - a `PYPI_API_TOKEN` secret holding a PyPI API token;
-- an `NPM_TOKEN` secret holding an npm token that may stage a publish of the package.
+- a trusted publisher on npmjs.com for `blenderlens-mcp`: this repository, the workflow `publish-npm.yml`, with
+  `npm publish` allowed. npm deletes a trusted publisher that has not published within two days of being added.
 
 The registry needs nothing: GitHub OIDC proves the `io.github.pzalutski-pixel` namespace.
 
