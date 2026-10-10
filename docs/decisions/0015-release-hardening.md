@@ -18,7 +18,8 @@
 
 **Least privilege.**
 - Every action is pinned to a full commit SHA, with its version in a `# vX.Y.Z` comment, and each action is
-  pinned to the same SHA in every workflow file. Dependabot updates the SHA and the comment together, weekly.
+  pinned to the same SHA in every workflow file. Moving to a newer version changes the SHA and the comment
+  together.
 - Every workflow sets `permissions: contents: read` at the top. A job asks for more only to do its own work:
 
   | Job | Asks for |

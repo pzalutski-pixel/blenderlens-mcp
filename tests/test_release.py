@@ -592,7 +592,7 @@ BUILD_WORKFLOWS = ["ci.yml", "release.yml"]
 def test_every_action_is_pinned_to_a_commit_with_its_version_beside_it(name):
     """Every action is pinned to a commit SHA, with its version in a comment beside it.
 
-    A tag can be moved to other code but a commit cannot, and Dependabot updates the SHA and the comment together.
+    A tag can be moved to other code but a commit cannot. The comment says which version the SHA is.
     """
     uses = re.findall(r"^\s*(?:- )?uses: (\S+)(.*)$", workflow(name), re.MULTILINE)
     assert uses, name
@@ -835,12 +835,7 @@ def test_the_pypi_token_check_accepts_only_an_api_token_for_pypi_org(capsys, mon
         assert value[6:] not in out or not value[6:], "the check printed the token"
 
 
-def test_dependabot_keeps_the_pinned_actions_current():
-    text = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
-    assert "package-ecosystem: github-actions" in text
-
-
-@pytest.mark.parametrize("name", [*WORKFLOW_FILES, "../dependabot.yml"])
+@pytest.mark.parametrize("name", WORKFLOW_FILES)
 def test_the_workflows_parse_as_yaml(name):
     yaml = pytest.importorskip("yaml")
     document = yaml.safe_load((WORKFLOWS / name).read_text(encoding="utf-8"))
