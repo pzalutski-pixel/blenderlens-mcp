@@ -336,6 +336,16 @@ def _closed_by_bridge(sock):
         return True
 
 
+def _closed_soon(sock, seconds=2.0):
+    """Return whether the other end closes ``sock`` within ``seconds``; a close can take a moment to arrive."""
+    deadline = time.monotonic() + seconds
+    while not _closed_by_bridge(sock):
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.01)
+    return True
+
+
 def _pump_until(bridge, condition, seconds=5.0, what="the bridge to settle"):
     """Poll the bridge until ``condition()`` holds, failing the test after ``seconds``."""
     deadline = time.monotonic() + seconds
@@ -425,7 +435,7 @@ def test_an_unproven_connection_out_of_time_is_closed_before_select_sees_it(serv
         monkeypatch.setattr(module.select, "select", spy)
         bridge.poll(0.01)
         assert watched == [[bridge.listener]], "the connection out of time was still watched"
-        assert _closed_by_bridge(unproven)
+        assert _closed_soon(unproven)
     finally:
         unproven.close()
 
@@ -466,7 +476,7 @@ def test_when_select_fails_the_unproven_connections_go_and_the_proven_one_stays(
         monkeypatch.setattr(module.select, "select", fail_once)
         bridge.poll(0.01)
         assert len(bridge.clients) == 1, "unproven connections are still open"
-        assert all(_closed_by_bridge(s) for s in idle)
+        assert all(_closed_soon(s) for s in idle)
         assert client.ask({"id": 1, "command": "get_scene", "token": TOKEN})["ok"] is True
     finally:
         for sock in idle:
@@ -607,7 +617,12 @@ def test_the_bridge_listens_on_this_machine_only(bridge_module, host):
         bridge_module.Bridge(mode="live", token=TOKEN).start(host, 0)
 
 
-@pytest.mark.parametrize("host", ["127.0.0.1", "127.0.0.2", "localhost"])
+@pytest.mark.parametrize("host", [
+    "127.0.0.1",
+    pytest.param("127.0.0.2", marks=pytest.mark.skipif(
+        sys.platform == "darwin", reason="macOS configures only 127.0.0.1 on its loopback interface")),
+    "localhost",
+])
 def test_loopback_hosts_are_accepted(bridge_module, host):
     bridge = bridge_module.Bridge(mode="live", token=TOKEN)
     bridge.start(host, 0)

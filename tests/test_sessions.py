@@ -37,7 +37,18 @@ def process_alive(pid: int) -> bool:
         os.kill(pid, 0)
     except OSError:
         return False
-    return True
+    return not _zombie(pid)
+
+
+def _zombie(pid: int) -> bool:
+    """Return whether ``pid`` has ended but its parent has not collected it yet, which counts as ended."""
+    try:
+        with open(f"/proc/{pid}/stat", encoding="utf-8") as handle:  # Linux: the state follows the name.
+            return handle.read().rsplit(")", 1)[1].split()[0] == "Z"
+    except OSError:
+        pass
+    state = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True).stdout
+    return state.strip().startswith("Z")
 
 
 def wait_gone(pid: int, seconds: float = 20.0) -> bool:

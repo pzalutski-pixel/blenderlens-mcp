@@ -271,9 +271,9 @@ def test_paths_inside_the_allowed_folders_and_render_dir_work(mcp_process, blend
     assert not (tmp_path / "loose.glb").exists(), "nothing was written"
 
     # With no path, the preview is written to render_dir, which is always allowed.
-    shot = proc.ok("render_preview", engine="workbench", resolution=32)
+    shot = proc.ok("render_preview", engine="cycles", samples=1, resolution=32)
     assert os.path.realpath(os.path.dirname(shot["path"])) == os.path.realpath(renders)
-    proc.ok("render_preview", engine="workbench", resolution=32, path=str(renders / "named.png"))
+    proc.ok("render_preview", engine="cycles", samples=1, resolution=32, path=str(renders / "named.png"))
 
     proc.ok("save_file", path=str(allowed / "work.blend"))
     proc.ok("save_file")  # Saves where the file was last saved, which is inside an allowed folder.

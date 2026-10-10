@@ -125,14 +125,14 @@ jobs:
           --cache "$RUNNER_TEMP/blender-download" --dest "$RUNNER_TEMP/blender"
 
       # fetch_blender.py has set BLENDER_BIN. Windows runners have no GPU and no OpenGL 4.3 driver, so the
-      # Workbench and EEVEE previews cannot get an OpenGL context there, so the test that renders with them,
-      # test_workbench_and_eevee_render_too, is left out.
+      # Workbench and EEVEE previews cannot get an OpenGL context there, so the tests that render with them,
+      # marked opengl, are left out.
       # Cycles on the CPU, the default engine and the one every other render test uses, runs everywhere.
       - name: Run the integration suite against Blender ${{ matrix.blender }}
         run: |
           case "$RUNNER_OS" in
             Linux)   xvfb-run -a python -m pytest -q -m integration ;;
-            Windows) python -m pytest -q -m integration --deselect tests/test_render.py::test_workbench_and_eevee_render_too ;;
+            Windows) python -m pytest -q -m "integration and not opengl" ;;
             *)       python -m pytest -q -m integration ;;
           esac
 

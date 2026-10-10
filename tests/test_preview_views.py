@@ -47,6 +47,7 @@ def scene(blender):
     return blender
 
 
+@pytest.mark.opengl
 def test_two_views_make_one_png_of_twice_the_width(scene, tmp_path):
     out = scene.ok("render_preview", objects=["Body"], views=["front", "right"], engine="workbench", resolution=32,
                    path=str(tmp_path / "sheet.png"))
@@ -62,6 +63,7 @@ def test_two_views_make_one_png_of_twice_the_width(scene, tmp_path):
         assert region(scene, out["path"], box)["rgb"] == pytest.approx(region(scene, alone["path"])["rgb"], abs=0.002)
 
 
+@pytest.mark.opengl
 def test_four_views_make_a_square_sheet_and_transparency_is_kept(scene, tmp_path):
     out = scene.ok("render_preview", objects=["Body"], views=["front", "right", "top", "three_quarter"],
                    engine="workbench", resolution=[40, 24], transparent=True, path=str(tmp_path / "four.png"))
@@ -71,6 +73,7 @@ def test_four_views_make_a_square_sheet_and_transparency_is_kept(scene, tmp_path
     assert out["views"][3]["cell"] == [40, 24, 40, 24]
 
 
+@pytest.mark.opengl
 def test_a_sheet_leaves_the_scene_as_it_was(scene, tmp_path):
     before = scene.ok("run_python", code=STATE)["result"]
     images = "result = sorted((i.name, i.type) for i in bpy.data.images)"
@@ -85,12 +88,14 @@ def test_a_sheet_leaves_the_scene_as_it_was(scene, tmp_path):
     assert meshes == ["Body", "Floor"], "the wire overlays were left behind"
 
 
+@pytest.mark.opengl
 def test_a_preview_leaves_no_render_result_behind(scene, tmp_path):
     scene.ok("render_preview", objects=["Body"], engine="workbench", resolution=16, path=str(tmp_path / "p.png"))
     left = scene.ok("run_python", code="result = [i.name for i in bpy.data.images if i.type == 'RENDER_RESULT']")
     assert left["result"] == []
 
 
+@pytest.mark.opengl
 def test_context_objects_show_without_changing_the_framing(scene, tmp_path):
     common = {"objects": ["Body"], "engine": "workbench", "resolution": 48, "view": "three_quarter"}
     alone = scene.ok("render_preview", path=str(tmp_path / "alone.png"), **common)
@@ -104,6 +109,7 @@ def test_context_objects_show_without_changing_the_framing(scene, tmp_path):
     assert region(scene, alone["path"], lower)["covered"] < 0.1
 
 
+@pytest.mark.opengl
 def test_a_marker_at_the_centre_projects_to_the_centre_pixel(scene, tmp_path):
     scene.ok("create_object", kind="empty", name="Right", location=[1, 0, 0.6])
     out = scene.ok("render_preview", objects=["Body"], markers=["Body", "Right"], view="front", engine="workbench",
@@ -116,6 +122,7 @@ def test_a_marker_at_the_centre_projects_to_the_centre_pixel(scene, tmp_path):
     assert [(m["view"], m["x"], m["y"]) for m in sheet["markers"]] == [("front", 32.0, 24.0), ("top", 96.0, 24.0)]
 
 
+@pytest.mark.opengl
 def test_a_fixed_ortho_scale_keeps_metres_to_pixels(scene, tmp_path):
     scene.ok("create_object", kind="empty", name="L", location=[-1, 0, 0.6])
     scene.ok("create_object", kind="empty", name="R", location=[1, 0, 0.6])
@@ -130,6 +137,7 @@ def test_a_fixed_ortho_scale_keeps_metres_to_pixels(scene, tmp_path):
                   engine="workbench", resolution=16, path=str(tmp_path / "x.png"))
 
 
+@pytest.mark.opengl
 def test_orthographic_framing_fits_what_the_camera_sees_not_a_sphere(blender, tmp_path):
     """An orthographic view frames what the camera sees, not a sphere around the object.
 
@@ -163,6 +171,7 @@ def span(server, path, box=None) -> list:
 
 @pytest.mark.parametrize(("size", "resolution", "axis"), [([2, 0.2, 0.2], [384, 160], 0),
                                                           ([0.2, 0.2, 2], [160, 384], 1)])
+@pytest.mark.opengl
 def test_a_perspective_view_fills_a_wide_or_a_tall_picture(blender, tmp_path, size, resolution, axis):
     """A long bar in a wide picture, and a column in a tall one, fill most of the picture along their length.
 
@@ -198,6 +207,7 @@ def test_hidden_from_camera_an_object_still_casts_its_shadow(scene, tmp_path):
     assert shadowed != pytest.approx(body, abs=0.02), "the body itself is in the picture"
 
 
+@pytest.mark.opengl
 def test_clay_and_random_render_with_workbench_and_wireframe_draws_edges(scene, tmp_path):
     common = {"objects": ["Body"], "resolution": 48, "view": "front"}
     clay = scene.ok("render_preview", style="clay", path=str(tmp_path / "clay.png"), **common)
@@ -274,6 +284,7 @@ result = round(sum(1 for w, s in zip(wire, shaded, strict=True) if s - w > 0.05)
 
 
 @pytest.mark.parametrize("projection", ["orthographic", "perspective"])
+@pytest.mark.opengl
 def test_wire_lines_are_thin_whatever_the_projection(blender, tmp_path, projection):
     """The wire overlay stays about 1.5 pixels wide in both projections.
 

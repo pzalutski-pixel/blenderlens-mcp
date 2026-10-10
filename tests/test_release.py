@@ -651,6 +651,13 @@ def test_ci_runs_lint_the_unit_matrix_integration_and_the_package_check():
         "fetch_blender.py does not set BLENDER_BIN, by which the integration suite finds Blender"
 
 
+def test_windows_ci_leaves_out_only_the_tests_that_need_opengl():
+    """GitHub's Windows runners have no OpenGL, so Workbench and EEVEE tests are left out there by their marker."""
+    block = jobs(workflow("ci.yml"))["integration"]
+    assert 'Windows) python -m pytest -q -m "integration and not opengl"' in block
+    assert "opengl:" in (ROOT / "pyproject.toml").read_text(encoding="utf-8"), "the opengl marker is not registered"
+
+
 def test_every_test_a_workflow_deselects_exists():
     """A test a workflow deselects by name exists, so renaming it cannot silently undo the deselection."""
     for name in WORKFLOW_FILES:

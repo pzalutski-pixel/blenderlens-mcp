@@ -83,6 +83,7 @@ timeout = 300
 markers = [
     "integration: requires a real Blender binary (skipped when none is found)",
     "live: opens a Blender window with the add-on running; opt in with BLENDERLENS_TEST_LIVE=1",
+    "opengl: renders with Workbench or EEVEE, which need an OpenGL context (GitHub's Windows runners have none)",
 ]
 
 [tool.ruff]

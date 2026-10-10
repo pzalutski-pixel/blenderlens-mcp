@@ -90,7 +90,8 @@ def test_reads_and_refusals_push_no_step(blender, tmp_path):
     blender.ok("get_scene")
     blender.ok("get_mesh", object="Box")
     blender.ok("check_asset")
-    blender.ok("render_preview", objects=["Box"], engine="workbench", resolution=16, path=str(tmp_path / "p.png"))
+    blender.ok("render_preview", objects=["Box"], engine="cycles", samples=1, resolution=16,
+               path=str(tmp_path / "p.png"))
     blender.ok("export_glb", path=str(tmp_path / "box.glb"))
     blender.refused("set_transform", "not_found", object="Ghost", location=[1, 2, 3])
     blender.refused("edit_mesh", "bad_argument", object="Box", operation="extrude", faces=[99])

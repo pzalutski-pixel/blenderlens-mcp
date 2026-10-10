@@ -81,6 +81,7 @@ def test_transparent_background_gives_rgba(scene, tmp_path):
 
 
 @pytest.mark.parametrize("engine", ["workbench", "eevee"])
+@pytest.mark.opengl
 def test_workbench_and_eevee_render_too(scene, tmp_path, engine):
     out = scene.ok("render_preview", objects=["Cabinet"], engine=engine, resolution=96, samples=8,
                    path=str(tmp_path / f"{engine}.png"), timeout=240)
@@ -138,7 +139,8 @@ def test_the_users_output_format_survives_a_preview(scene, tmp_path, file_format
     """The scene's output file format and bit depth are the same after a preview, whatever depths the format allows."""
     settings = "s = bpy.context.scene.render.image_settings\n"
     scene.ok("run_python", code=f"{settings}s.file_format = {file_format!r}\ns.color_depth = {depth!r}")
-    scene.ok("render_preview", objects=["Cabinet"], resolution=32, engine="workbench", path=str(tmp_path / "f.png"))
+    scene.ok("render_preview", objects=["Cabinet"], resolution=32, engine="cycles", samples=1,
+             path=str(tmp_path / "f.png"))
     kept = scene.ok("run_python", code=f"{settings}result = [s.file_format, s.color_depth]")["result"]
     assert kept == [file_format, depth]
 
@@ -198,6 +200,7 @@ bpy.context.view_layer.layer_collection.children["Stuff"].exclude = True
 
 
 @pytest.mark.parametrize("trap", list(TRAPS))
+@pytest.mark.opengl
 def test_a_preview_shows_the_object_at_its_size_whatever_the_scene_is_set_to(scene, tmp_path, trap):
     """The PNG has the requested size and shows the object, whatever the scene's settings.
 
