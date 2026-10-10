@@ -72,14 +72,6 @@ jobs:
       - name: The CHANGELOG has a dated entry for this version
         run: python .github/scripts/release_kit.py changelog "${GITHUB_REF_NAME#v}"
 
-      # The PyPI publish needs this token. It is checked here, before anything is built, so a missing or wrong
-      # token stops the release instead of leaving one registry published and another not. npm needs no token: it
-      # trusts this repository's publish-npm.yml through trusted publishing.
-      - name: The PyPI token is in place and is an API token for pypi.org
-        env:
-          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-        run: python .github/scripts/release_kit.py pypi-token
-
       - name: Install mcp-publisher, pinned and checked
         run: |
           asset="mcp-publisher_linux_amd64.tar.gz"

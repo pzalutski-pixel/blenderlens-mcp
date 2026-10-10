@@ -721,7 +721,6 @@ def test_a_release_starts_from_a_tag_and_verifies_everything_before_it_builds():
     assert 'git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD' in verify, "a tag off main is not refused"
     assert 'release_kit.py versions --tag "$GITHUB_REF_NAME"' in verify
     assert "release_kit.py changelog" in verify
-    assert "PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}" in verify and "release_kit.py pypi-token" in verify
     assert "./mcp-publisher validate server.json" in verify
     assert re.search(r"^    needs: verify$", steps["build"], re.MULTILINE)
     assert re.search(r"^    needs: \[ci, build\]$", steps["github-release"], re.MULTILINE)
@@ -785,11 +784,10 @@ def test_a_package_is_published_from_the_release_files_after_its_checksum_attest
     assert job.index("gh attestation verify") < job.rindex("PUBLISHED != '1'")
 
 
-def test_pypi_is_published_with_its_token_after_checking_it():
+def test_pypi_is_published_through_trusted_publishing():
     job = workflow("publish-pypi.yml")
-    assert "release_kit.py pypi-token" in job
-    assert "pypa/gh-action-pypi-publish@" in job and "password: ${{ secrets.PYPI_API_TOKEN }}" in job
-    assert job.index("release_kit.py pypi-token") < job.index("pypa/gh-action-pypi-publish@")
+    assert "pypa/gh-action-pypi-publish@" in job and "id-token: write" in job
+    assert "PYPI_API_TOKEN" not in job and "password:" not in job, "a stored token would bypass trusted publishing"
     assert "https://pypi.org/pypi/blenderlens-mcp/$VERSION/json" in job
 
 
@@ -816,24 +814,6 @@ def test_the_registry_is_published_after_both_packages_with_the_release_s_pinned
     for name in ("release.yml", "publish-mcp-registry.yml"):
         assert "sha256sum --check" in workflow(name) and "releases/latest" not in workflow(name), name
     assert "mcp-publisher login github-oidc" in text and "mcp-publisher publish" in text
-
-
-def test_the_pypi_token_check_accepts_only_an_api_token_for_pypi_org(capsys, monkeypatch):
-    """The check reads the macaroon's location, so a TestPyPI token or a pasted value fails before a release."""
-    import base64
-
-    def token(location: str) -> str:
-        raw = bytes([2, 1, len(location)]) + location.encode() + bytes([2, 4]) + b"abcd" + bytes([0])
-        return "pypi-" + base64.urlsafe_b64encode(raw).decode().rstrip("=")
-
-    assert token("pypi.org").startswith("pypi-AgEIcHlwaS5vcmc"), "the sample does not match PyPI's token format"
-    for value, fails in ((token("pypi.org"), False), (token("test.pypi.org"), True), ("", True),
-                         ("npm_0123456789", True), ("pypi-not-a-macaroon", True)):
-        monkeypatch.setenv("PYPI_API_TOKEN", value)
-        code = kit().main(["pypi-token"])
-        out = capsys.readouterr().out
-        assert code == (1 if fails else 0), (value[:12], out)
-        assert value[6:] not in out or not value[6:], "the check printed the token"
 
 
 @pytest.mark.parametrize("name", WORKFLOW_FILES)

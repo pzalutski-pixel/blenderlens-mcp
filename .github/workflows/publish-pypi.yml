@@ -32,6 +32,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      id-token: write # trusted publishing proves this workflow's identity to PyPI with its OIDC token
       attestations: read # gh attestation verify reads the release files' attestations
     steps:
       # The released commit, never the branch head: the checks below run the release kit as it was released.
@@ -52,11 +53,6 @@ jobs:
           version="$(python .github/scripts/release_kit.py versions --tag "$tag")" || { echo "$version"; exit 1; }
           echo "TAG=$tag" >> "$GITHUB_ENV"
           echo "VERSION=$version" >> "$GITHUB_ENV"
-
-      - name: The PyPI token is in place and is an API token for pypi.org
-        env:
-          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-        run: python .github/scripts/release_kit.py pypi-token
 
       - name: Skip a version PyPI already has
         run: |
@@ -79,7 +75,7 @@ jobs:
           for file in dist/*; do gh attestation verify "$file" --repo "$GITHUB_REPOSITORY"; done
           python .github/scripts/release_kit.py dist dist --version "$VERSION"
 
+      # PyPI accepts the upload through trusted publishing: the project's settings on pypi.org trust this
+      # repository's publish-pypi.yml, so no PyPI token is stored.
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         if: env.PUBLISHED != '1'
-        with:
-          password: ${{ secrets.PYPI_API_TOKEN }}

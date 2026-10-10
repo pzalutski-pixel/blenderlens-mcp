@@ -11,7 +11,6 @@ Run from the repository root:
     release_kit.py dist DIR --version V                      check the wheel and the sdist in DIR
     release_kit.py addon-zip FILE --version V                check the add-on zip
     release_kit.py mcp-responses FILE --tools N --version V  check recorded responses to initialize and tools/list
-    release_kit.py pypi-token                                check that $PYPI_API_TOKEN is an API token for pypi.org
 
 Every check reads the built artifact itself, never a manifest that describes it: a package.json can list
 LICENSE and NOTICE while npm pack cannot reach them, and a check of the manifest alone would pass. Archives are
@@ -26,10 +25,7 @@ version the server supports, because the unit tests run it on every Python versi
 from __future__ import annotations
 
 import argparse
-import base64
-import binascii
 import json
-import os
 import re
 import shutil
 import sys
@@ -273,33 +269,6 @@ def check_mcp_responses(text: str, tools: int, version: str) -> str:
     return f"blenderlens-mcp {version} responded to initialize and listed {tools} tools"
 
 
-def check_pypi_token(token: str | None) -> str:
-    """Check that ``token`` is a PyPI API token for pypi.org, without printing or sending it.
-
-    A PyPI API token is "pypi-" followed by a base64url-encoded macaroon in version 2 of the binary format,
-    whose first field is its location: "pypi.org", or "test.pypi.org" for TestPyPI. Only an upload proves that
-    PyPI accepts the token; this check catches a missing secret, a value pasted from elsewhere and a TestPyPI
-    token before anything is published.
-    """
-    if not token:
-        raise Failed("PYPI_API_TOKEN is not set. Add it under the repository's Settings > Secrets and variables > "
-                     "Actions.")
-    if not token.startswith("pypi-"):
-        raise Failed("PYPI_API_TOKEN is not a PyPI API token: a PyPI API token starts with pypi-.")
-    body = token[len("pypi-"):]
-    try:
-        macaroon = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))
-    except (ValueError, binascii.Error):
-        raise Failed("PYPI_API_TOKEN is not a PyPI API token: the part after pypi- is not base64.") from None
-    # Version 2, then field type 1 (the location), then the location's length and bytes.
-    if len(macaroon) < 3 or macaroon[0] != 2 or macaroon[1] != 1:
-        raise Failed("PYPI_API_TOKEN is not a PyPI API token: it does not hold a macaroon with a location.")
-    location = macaroon[3:3 + macaroon[2]].decode("utf-8", "replace")
-    if location != "pypi.org":
-        raise Failed(f"PYPI_API_TOKEN is a token for {location}, not for pypi.org.")
-    return "PYPI_API_TOKEN is an API token for pypi.org."
-
-
 # ---------------------------------------------------------------------------
 
 
@@ -315,7 +284,6 @@ def main(argv: list[str] | None = None) -> int:
         commands.add_parser(name).add_argument("version")
     commands.add_parser("tool-count")
     commands.add_parser("npm-bundle")
-    commands.add_parser("pypi-token")
     for name in ("npm-tarball", "dist", "addon-zip", "mcp-responses"):
         command = commands.add_parser(name)
         command.add_argument("path", type=Path)
@@ -349,8 +317,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{args.path.name}: {len(names)} files, blender_manifest.toml at the root, version {args.version}.")
         elif args.command == "mcp-responses":
             print(check_mcp_responses(_read(args.path), args.tools, args.version))
-        elif args.command == "pypi-token":
-            print(check_pypi_token(os.environ.get("PYPI_API_TOKEN")))
     except Failed as failure:
         print(f"::error::{failure}")
         return 1

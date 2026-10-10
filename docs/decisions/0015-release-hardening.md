@@ -25,7 +25,7 @@
   | Job | Asks for |
   |---|---|
   | `github-release` | `contents: write`, `id-token: write`, `attestations: write` |
-  | `publish-pypi` | `attestations: read` |
+  | `publish-pypi` | `id-token: write`, `attestations: read` |
   | `publish-npm` | `id-token: write`, `attestations: read` |
   | `publish-registry` | `id-token: write` |
 
@@ -37,8 +37,6 @@
 - the tagged commit is on `main`;
 - the tag equals `__version__`, the add-on manifest's version, `npm/package.json` and `server.json`;
 - `CHANGELOG.md` has a `## [x.y.z] - YYYY-MM-DD` heading for this version ("Unreleased" fails);
-- the `PYPI_API_TOKEN` secret is set and is an API token for pypi.org (`release_kit.py pypi-token` reads the
-  macaroon's location, without printing the token);
 - `mcp-publisher validate` accepts `server.json`.
 
 **The artifacts are built once, checked as built, run in a clean environment, and published byte for byte.**
@@ -59,9 +57,10 @@
 
 **Publishing, one workflow per registry.** Each checks out the released commit, checks that the tag and every
 manifest carry one version, and skips a version its registry already has, so a retry is always safe.
-- `publish-pypi.yml` checks the token, downloads the wheel and the sdist from the GitHub release, checks them
-  against `SHA256SUMS`, their attestations and `release_kit.py dist`, and uploads them with the pinned
-  `pypa/gh-action-pypi-publish` action and the `PYPI_API_TOKEN` secret.
+- `publish-pypi.yml` downloads the wheel and the sdist from the GitHub release, checks them against
+  `SHA256SUMS`, their attestations and `release_kit.py dist`, and uploads them with the pinned
+  `pypa/gh-action-pypi-publish` action. PyPI accepts them through trusted publishing, so no PyPI token is
+  stored.
 - `publish-npm.yml` downloads the tarball, checks it the same way and with `release_kit.py npm-tarball`, and
   runs `npm publish <the checked tarball> --provenance`. npm accepts it through trusted publishing: GitHub's OIDC
   token proves the publish comes from this repository's `publish-npm.yml`, so no npm token is stored.
@@ -74,8 +73,8 @@ manifest carry one version, and skips a version its registry already has, so a r
 `.github/scripts/fetch_blender.py`. Both need only the standard library and Python 3.10. CI, the release and
 `tests/test_release.py` run the same code.
 
-**Publishing also needs, outside the repository:**
-- a `PYPI_API_TOKEN` secret holding a PyPI API token;
+**Publishing also needs, outside the repository, and no stored token:**
+- a trusted publisher on pypi.org for `blenderlens-mcp`: this repository and the workflow `publish-pypi.yml`;
 - a trusted publisher on npmjs.com for `blenderlens-mcp`: this repository, the workflow `publish-npm.yml`, with
   `npm publish` allowed. npm deletes a trusted publisher that has not published within two days of being added.
 
@@ -102,20 +101,20 @@ Each check guards against a way a release can go wrong without anyone noticing:
   checks.
 - **What is checked must be what is published.** A package rebuilt at publish time is one that no check saw.
   So the artifacts are built once, attached to the GitHub release, and published from there as built.
-- **A missing or wrong token fails late.** Without a check, a release would build, publish to one registry and
-  then fail on the next. So both tokens are checked before anything is built, and again by each publish
-  workflow.
+- **A stored token leaks, expires and has to be rotated.** PyPI and npm both accept a publish through trusted
+  publishing instead: each trusts one workflow file in this repository, and the workflow proves who it is with a
+  short-lived GitHub OIDC token, so there is no long-lived secret to steal or renew.
 - **An unpinned "latest" `mcp-publisher`** would run whatever that repository ships on the day, with an OIDC
   token in hand. So it is pinned and checked against its published SHA-256.
 
-Pinning actions to commit SHAs closes the hole of a tag moved to other code. The PyPI and npm tokens reach
-only the job that publishes, through secrets that Actions masks in its logs. Provenance and attestations let
+Pinning actions to commit SHAs closes the hole of a tag moved to other code. Only the job that publishes asks
+for an OIDC token, and the registry accepts it only from the workflow file it trusts. Provenance and attestations let
 anyone check which workflow run and which commit produced the published bytes.
 
 **The shape of the release.**
 - It runs on a tag pushed on `main`, so a version is always code that `main` holds, and the workflow makes the
   GitHub release itself, with the files its own build produced.
-- Each registry has its own workflow. A registry that is down, or a token that has expired, then fails one
+- Each registry has its own workflow. A registry that is down, or a trusted publisher that is not set up, then fails one
   workflow, which is re-run on its own once the cause is fixed, while the others stay published. Re-running the
   whole release instead would fail on the versions already out.
 - The publish workflows start from `workflow_run`, which runs them from `main`'s copy of the workflow file, and
