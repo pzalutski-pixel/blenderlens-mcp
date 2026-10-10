@@ -3,21 +3,24 @@ name: CI
 # On every push to main and every pull request into main, and by hand for any branch, this workflow lints the
 # code, runs the unit tests on three systems and four Python versions, and runs the integration tests against
 # real Blender builds. It also builds the wheel, the sdist, the npm tarball and the add-on zip, checks what each
-# holds, and installs and runs the wheel and the tarball in clean environments. release.yml requires a successful
-# run of this workflow for the commit it releases, so a tag is only ever released from a commit that passed here.
+# holds, and installs and runs the wheel and the tarball in clean environments. release.yml also runs this
+# workflow on the tagged commit itself, before it makes the release.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
 
 # No job in this workflow writes anything, so every job keeps read-only access to the repository.
 permissions:
   contents: read
 
+# Called from release.yml, github.workflow names the caller, so the group starts with ci- instead, and never
+# matches the release's own group.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 # Use bash on every runner, including Windows, where it is Git Bash, so each step reads the same everywhere.

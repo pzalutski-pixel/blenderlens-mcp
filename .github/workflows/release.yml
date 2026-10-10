@@ -3,14 +3,14 @@ name: Release
 # Pushing a v* tag on main builds one version and makes its GitHub release. Nothing is built until every check
 # has passed. The jobs are:
 #   verify          checks that the tagged commit is on main; that the tag, __version__, the add-on manifest,
-#                   npm/package.json and server.json agree; that the CHANGELOG has a dated entry; that CI passed
-#                   for this commit; that the npm and PyPI tokens are in place; and that the registry accepts
-#                   server.json
-#   test            runs the linter and the unit tests, after verify
+#                   npm/package.json and server.json agree; that the CHANGELOG has a dated entry; that the npm
+#                   and PyPI tokens are in place; and that the registry accepts server.json
+#   ci              runs ci.yml on the tagged commit: the linter, the unit tests on every system and Python, the
+#                   integration tests against real Blender builds, and the package checks, after verify
 #   build           builds the wheel, the sdist, the npm tarball and the add-on zip, checks what each holds, and
 #                   installs and runs the wheel and the tarball in clean environments, after verify
 #   github-release  makes the GitHub release with all four files and their SHA256SUMS, each attested, after
-#                   test and build
+#                   ci and build
 # When this workflow succeeds, publish-pypi.yml, publish-npm.yml and publish-mcp-registry.yml each publish the
 # release's files to one registry. Each also runs by hand for a tag, so a failed upload is retried on its own.
 on:
@@ -39,11 +39,9 @@ env:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    # Most of this time is spent waiting for CI, when the tag was pushed together with its commit.
-    timeout-minutes: 90
+    timeout-minutes: 15
     permissions:
       contents: read
-      actions: read # gh run list, to find this commit's CI run
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -78,33 +76,6 @@ jobs:
       - name: The CHANGELOG has a dated entry for this version
         run: python .github/scripts/release_kit.py changelog "${GITHUB_REF_NAME#v}"
 
-      # A tag push runs no other workflow, and a tag can name any commit, including one whose tests never
-      # ran. CI runs on every push to main, so a commit on main has a run to find. When the tag was pushed
-      # together with its commit, CI is still running, so this step waits up to an hour.
-      - name: Require a successful CI run for this commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          deadline=$(( $(date +%s) + 3600 ))
-          while :; do
-            runs="$(gh run list --repo "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA" --workflow ci.yml \
-                      --limit 50 --json status,conclusion,databaseId)"
-            if [ "$(jq '[.[] | select(.conclusion == "success")] | length' <<< "$runs")" -gt 0 ]; then
-              echo "ci.yml passed for $GITHUB_SHA."
-              break
-            fi
-            if [ "$(jq '[.[] | select(.status != "completed")] | length' <<< "$runs")" -eq 0 ]; then
-              echo "::error::No successful ci.yml run for $GITHUB_SHA; refusing to release. Runs: $runs"
-              exit 1
-            fi
-            if [ "$(date +%s)" -ge "$deadline" ]; then
-              echo "::error::ci.yml is still running for $GITHUB_SHA after an hour; re-run this job once it passes."
-              exit 1
-            fi
-            echo "ci.yml is still running for $GITHUB_SHA; checking again in a minute."
-            sleep 60
-          done
-
       # The publish workflows need both tokens. They are checked here, before anything is built, so a missing or
       # wrong token stops the release instead of leaving one registry published and another not.
       - name: The npm token is in place and npm accepts it
@@ -137,27 +108,13 @@ jobs:
       - name: The registry accepts server.json
         run: ./mcp-publisher validate server.json
 
-  test:
+  # The whole CI workflow runs on the tagged commit itself, so a release never depends on a run that a branch
+  # push made.
+  ci:
     needs: verify
-    name: unit / ${{ matrix.os }} / py${{ matrix.python-version }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: true
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ['3.10', '3.13']
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: ${{ matrix.python-version }}
-      - run: pip install -e ".[dev]"
-      - run: ruff check .
-      # The integration tests ran against real Blender builds in the CI run that the verify job required.
-      - run: python -m pytest -q -m "not integration and not live"
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
 
   build:
     needs: verify
@@ -250,7 +207,7 @@ jobs:
   # Blender users download the add-on zip from it. Each file, and SHA256SUMS, carries a build provenance
   # attestation that `gh attestation verify` checks.
   github-release:
-    needs: [test, build]
+    needs: [ci, build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

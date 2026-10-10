@@ -11,8 +11,8 @@
   - the integration suite against a real Blender (decision 0014). Windows runners have no OpenGL 4.3 driver,
     so the test of the Workbench and EEVEE previews is left out there;
   - a package job on all three systems, described below.
-- `release.yml` runs when a `v*` tag is pushed. Releases are made from `main`: it builds, checks and attests the
-  artifacts, and makes the GitHub release that holds them.
+- `release.yml` runs when a `v*` tag is pushed. Releases are made from `main`: it runs the whole of `ci.yml` on
+  the tagged commit, builds, checks and attests the artifacts, and makes the GitHub release that holds them.
 - `publish-pypi.yml`, `publish-npm.yml` and `publish-mcp-registry.yml` each publish one release to one registry.
   Each runs when `release.yml` succeeds, and by hand for a tag.
 
@@ -23,7 +23,6 @@
 
   | Job | Asks for |
   |---|---|
-  | `verify` | `actions: read`, to find the commit's CI run |
   | `github-release` | `contents: write`, `id-token: write`, `attestations: write` |
   | `publish-pypi` | `attestations: read` |
   | `publish-npm` | `id-token: write`, `attestations: read` |
@@ -37,8 +36,6 @@
 - the tagged commit is on `main`;
 - the tag equals `__version__`, the add-on manifest's version, `npm/package.json` and `server.json`;
 - `CHANGELOG.md` has a `## [x.y.z] - YYYY-MM-DD` heading for this version ("Unreleased" fails);
-- a `ci.yml` run for the tagged commit succeeded. The job waits up to an hour while CI is still running, and
-  fails when there is no run or every run failed;
 - the `NPM_TOKEN` secret is set and npm accepts it (`npm whoami`), and the `PYPI_API_TOKEN` secret is set and is
   an API token for pypi.org (`release_kit.py pypi-token` reads the macaroon's location, without printing the
   token);
@@ -97,8 +94,10 @@ Each check guards against a way a release can go wrong without anyone noticing:
   Windows path as the name of a remote host.
 - **Versions written in four files drift apart.** So a test keeps them equal, and the release refuses a tag
   that disagrees.
-- **A tag can name any commit**, including one whose tests never ran. So a release needs a successful CI run
-  for its commit.
+- **A release must be tested as tagged.** A tag can name any commit, and a branch's CI run tested whatever that
+  push held. So the release calls `ci.yml` on the tagged commit itself, and makes the GitHub release only after
+  every job passes: lint, the unit tests on every system, the integration tests on real Blender and the package
+  checks.
 - **What is checked must be what is published.** A package rebuilt at publish time is one that no check saw.
   So the artifacts are built once, attached to the GitHub release, and published from there as built.
 - **A missing or wrong token fails late.** Without a check, a release would build, publish to one registry and

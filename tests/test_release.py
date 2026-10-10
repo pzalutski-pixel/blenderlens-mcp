@@ -597,6 +597,8 @@ def test_every_action_is_pinned_to_a_commit_with_its_version_beside_it(name):
     uses = re.findall(r"^\s*(?:- )?uses: (\S+)(.*)$", workflow(name), re.MULTILINE)
     assert uses, name
     for action, rest in uses:
+        if action.startswith("./"):
+            continue  # A workflow in this repository, called at the same commit.
         assert re.fullmatch(r"[\w.-]+/[\w.-]+(/[\w./-]+)?@[0-9a-f]{40}", action), action
         assert re.fullmatch(r"\s+# v\d+(\.\d+)*", rest), f"{action} has no '# vX.Y.Z' comment"
 
@@ -617,6 +619,8 @@ def test_a_workflow_starts_read_only_and_every_job_has_a_timeout(name):
     assert re.search(r"^permissions:\n  contents: read\n(?!  )", head + "\n", re.MULTILINE), \
         "the top-level permissions are not contents: read alone"
     for job, block in jobs(text).items():
+        if re.search(r"^    uses: ", block, re.MULTILINE):
+            continue  # A job that calls a reusable workflow takes its jobs' timeouts.
         assert re.search(r"^    timeout-minutes: \d+$", block, re.MULTILINE), f"{name}: job {job} has no timeout"
 
 
@@ -633,6 +637,8 @@ def test_ci_runs_on_main_on_pull_requests_into_main_and_by_hand():
     assert re.search(r"^  push:\n    branches: \[main\]$", head, re.MULTILINE)
     assert re.search(r"^  pull_request:\n    branches: \[main\]$", head, re.MULTILINE)
     assert re.search(r"^  workflow_dispatch:$", head, re.MULTILINE)
+    assert re.search(r"^  workflow_call:$", head, re.MULTILINE), "the release cannot run CI on its tag"
+    assert "group: ci-" in head, "a CI run called from a release could share the release's concurrency group"
 
 
 def test_ci_runs_lint_the_unit_matrix_integration_and_the_package_check():
@@ -715,19 +721,25 @@ def test_a_release_starts_from_a_tag_and_verifies_everything_before_it_builds():
     assert 'git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD' in verify, "a tag off main is not refused"
     assert 'release_kit.py versions --tag "$GITHUB_REF_NAME"' in verify
     assert "release_kit.py changelog" in verify
-    assert "gh run list" in verify and "--workflow ci.yml" in verify, "the release does not check for a green CI run"
     assert "NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}" in verify and "npm whoami" in verify
     assert "PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}" in verify and "release_kit.py pypi-token" in verify
     assert "./mcp-publisher validate server.json" in verify
-    assert re.search(r"^    needs: verify$", steps["test"], re.MULTILINE)
     assert re.search(r"^    needs: verify$", steps["build"], re.MULTILINE)
-    assert re.search(r"^    needs: \[test, build\]$", steps["github-release"], re.MULTILINE)
+    assert re.search(r"^    needs: \[ci, build\]$", steps["github-release"], re.MULTILINE)
+
+
+def test_a_release_runs_the_whole_ci_on_its_tag_and_never_waits_on_a_branch():
+    release = workflow("release.yml")
+    ci = jobs(release)["ci"]
+    assert re.search(r"^    needs: verify$", ci, re.MULTILINE)
+    assert re.search(r"^    uses: \./\.github/workflows/ci\.yml$", ci, re.MULTILINE)
+    assert "gh run list" not in release, "the release waits on a CI run that a branch push made"
 
 
 def test_the_release_workflow_publishes_to_no_registry():
     """Each registry has its own workflow, so a failed upload is retried alone."""
     release = workflow("release.yml")
-    assert set(jobs(release)) == {"verify", "test", "build", "github-release"}
+    assert set(jobs(release)) == {"verify", "ci", "build", "github-release"}
     assert "npm publish " not in release and "gh-action-pypi-publish" not in release
     assert "mcp-publisher publish" not in release
 
@@ -838,6 +850,9 @@ def test_the_workflows_parse_as_yaml(name):
         assert document.get("on", document.get(True))
         assert document["permissions"] == {"contents": "read"}
         for job_id, job in document["jobs"].items():
+            if "uses" in job:
+                assert job["uses"].startswith("./.github/workflows/"), job_id
+                continue
             assert isinstance(job.get("timeout-minutes"), int), job_id
             assert job.get("runs-on"), job_id
             for step in job["steps"]:
