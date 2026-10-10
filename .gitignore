@@ -1,0 +1,33 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.whl
+
+# The add-on zip is built from src/blenderlens_mcp/addon on demand
+*.zip
+
+# What the example writes
+examples/out/
+
+# Blender's backup copies of saved files
+*.blend1
+
+# The npm package: the workflows copy the server, LICENSE and NOTICE into npm/ before packing
+node_modules/
+npm/server/
+npm/LICENSE
+npm/NOTICE
+*.tgz
+
+# Coverage data embeds absolute paths
+.coverage*
+coverage.xml
+htmlcov/

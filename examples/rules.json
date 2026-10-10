@@ -1,0 +1,22 @@
+{
+  "required": ["re:^(Crate|Barrel|Lantern)(_Stack)?$"],
+  "single_root": true,
+  "palette": {
+    "Wood": {"base_color": "#8b5a2b", "metallic": 0.0, "roughness": 0.8},
+    "Wood_Dark": {"base_color": "#5c3a1e", "metallic": 0.0, "roughness": 0.85},
+    "Iron": {"base_color": "#707070", "metallic": 1.0, "roughness": 0.5},
+    "Paint_Red": {"base_color": "#a03028", "metallic": 0.0, "roughness": 0.6},
+    "Glass": {"base_color": "#d0e0e8", "metallic": 0.0, "roughness": 0.1},
+    "Flame": {"base_color": "#ffc060", "emission": "#ffa040", "strength": 2.0}
+  },
+  "palette_only": true,
+  "retired": ["re:^Paint_Old$"],
+  "extras": [{"objects": "re:^(Crate|Barrel|Lantern)$", "keys": {"weight_kg": "number"}}],
+  "size": [
+    {"objects": "Crate", "min": [0.45, 0.45, 0.45], "max": [0.55, 0.55, 0.55]},
+    {"objects": "Barrel", "min": [0.5, 0.5, 0.8], "max": [0.7, 0.7, 1.0]},
+    {"objects": "Lantern", "min": [0.15, 0.15, null], "max": [0.25, 0.25, 0.4]}
+  ],
+  "origin_at_base": ["re:_Stack$"],
+  "apart": [{"a": "re:_1$", "b": "re:_[23]$"}, {"a": "re:_2$", "b": "re:_3$"}]
+}

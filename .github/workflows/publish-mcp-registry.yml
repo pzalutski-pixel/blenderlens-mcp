@@ -1,0 +1,117 @@
+name: Publish to MCP Registry
+
+# Publishes one release's server.json to the MCP Registry. It runs when the release workflow succeeds, and by
+# hand for a tag, so a failed publish is retried on its own. The registry accepts the entry only once the PyPI and
+# npm packages it names exist, so this waits until both registries show the version. A version the registry
+# already lists is left as it is, so a retry is always safe.
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The released tag whose server.json to publish (for example v0.2.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-mcp-registry
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # The same pinned version and SHA-256 as in release.yml. tests/test_release.py checks that they match.
+  MCP_PUBLISHER_VERSION: '1.8.1'
+  MCP_PUBLISHER_SHA256: 'a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc'
+  SERVER_NAME: 'io.github.pzalutski-pixel/blenderlens'
+
+jobs:
+  publish-registry:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write # mcp-publisher authenticates to the registry with GitHub OIDC
+    steps:
+      # The released commit, never the branch head: a server.json changed since the release would otherwise go
+      # out under the released version.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - name: The tag and every manifest carry one version
+        env:
+          DISPATCHED_TAG: ${{ inputs.tag }}
+          RELEASED_TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          tag="${DISPATCHED_TAG:-$RELEASED_TAG}"
+          version="$(python .github/scripts/release_kit.py versions --tag "$tag")" || { echo "$version"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Skip a version the registry already lists
+        run: |
+          listed="$(curl -fsS "https://registry.modelcontextprotocol.io/v0/servers/${SERVER_NAME//\//%2F}/versions" \
+                      | jq -r '.servers[].server.version' 2>/dev/null || true)"
+          if grep -qxF "$VERSION" <<< "$listed"; then
+            echo "$SERVER_NAME $VERSION is already in the MCP Registry; nothing to publish."
+            echo "PUBLISHED=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Wait until PyPI and npm both have the version
+        if: env.PUBLISHED != '1'
+        run: |
+          deadline=$(( $(date +%s) + 1800 ))
+          while :; do
+            pypi="$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/blenderlens-mcp/$VERSION/json")"
+            npm_version="$(npm view "blenderlens-mcp@$VERSION" version 2>/dev/null || true)"
+            if [ "$pypi" = 200 ] && [ "$npm_version" = "$VERSION" ]; then
+              echo "PyPI and npm both have blenderlens-mcp $VERSION."
+              break
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::After 30 minutes, PyPI answers $pypi and npm has '${npm_version}' for $VERSION. Publish the"
+              echo "::error::missing package with its own workflow, then run this workflow by hand for the tag."
+              exit 1
+            fi
+            echo "Waiting for the packages (PyPI: $pypi, npm: '${npm_version}'); checking again in 30 seconds."
+            sleep 30
+          done
+
+      - name: Install mcp-publisher, pinned and checked
+        if: env.PUBLISHED != '1'
+        run: |
+          asset="mcp-publisher_linux_amd64.tar.gz"
+          curl -fsSL --retry 3 -o "$asset" \
+            "https://github.com/modelcontextprotocol/registry/releases/download/v${MCP_PUBLISHER_VERSION}/$asset"
+          echo "${MCP_PUBLISHER_SHA256}  $asset" | sha256sum --check --strict -
+          tar -xzf "$asset" mcp-publisher
+          ./mcp-publisher --version
+
+      # A package that was just uploaded can take a minute to become visible to the registry, so a refusal is
+      # retried before the job fails.
+      - name: Publish server.json to the MCP Registry
+        if: env.PUBLISHED != '1'
+        run: |
+          ./mcp-publisher validate server.json
+          ./mcp-publisher login github-oidc
+          for attempt in 1 2 3 4 5; do
+            if ./mcp-publisher publish; then exit 0; fi
+            echo "The registry refused (attempt $attempt); trying again in 30 seconds."
+            sleep 30
+          done
+          exit 1

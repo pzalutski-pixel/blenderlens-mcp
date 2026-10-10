@@ -1,0 +1,104 @@
+name: Feature
+description: Propose a capability or a change, described so that a contributor can implement it.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the change concretely enough that a contributor can implement it: where it lives, and how to
+        confirm it is done.
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One sentence — what the change is.
+      placeholder: "Add a texel_density rule to check_asset that holds each object's pixels per metre to a range."
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Problem / motivation
+      description: The need this addresses, stated independently of the solution. Why it matters; what's limited today.
+      placeholder: |
+        A prop's textures look blurrier or sharper than its neighbours' when its UVs give it
+        fewer or more texture pixels per metre. unwrap_uv reports the density for one object,
+        but a project cannot hold every asset to its range the way it holds sizes and palettes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: approach
+    attributes:
+      label: Proposed approach
+      description: The technical direction. Enough that an implementer doesn't have to invent the design.
+      placeholder: |
+        Measure pixels per metre per object from UV area, face area and the material's image size,
+        as unwrap_uv's report does; add a "texel_density" rule ([{objects, min, max}]) validated
+        like "size", and report objects outside the range as an issue with the faces concerned.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Where this lives (code pointers)
+      description: The files and functions involved, and the existing components to reuse or keep as they are.
+      placeholder: |
+        Tool table (names, schemas, annotations): src/blenderlens_mcp/tools.py.
+        Protocol and argument checks: src/blenderlens_mcp/server.py, arguments.py.
+        Reaching Blender (live and background): src/blenderlens_mcp/session.py, background.py.
+        Commands and their dispatcher: src/blenderlens_mcp/addon/commands.py, one module per concern
+          (checks.py and rules.py for check_asset, uv.py, meshops.py, preview.py, ...).
+        Reading a .glb back: src/blenderlens_mcp/glb.py.
+        Why things are as they are: docs/decisions/, docs/architecture.md.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: A checklist that defines "done". Each item objectively checkable.
+      placeholder: |
+        - [ ] check_asset accepts a texel_density rule and refuses a malformed one with a hint.
+        - [ ] An object outside the range is an issue naming it, its density and the range.
+        - [ ] The blenderlens-mcp check command applies the rule to a .blend.
+        - [ ] Existing rules and their results are unchanged.
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: How to verify
+      description: Where the tests are and the exact command to run them.
+      placeholder: |
+        Tests: tests/ (pytest). Unit tests need no Blender. Integration tests drive a real Blender, found
+          through BLENDER_BIN, then PATH, then the usual install folders, and are skipped when none is found.
+        Run: python -m pytest -m "not integration and not live"
+             BLENDER_BIN=/path/to/blender python -m pytest -m integration
+        Lint: ruff check .
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope boundaries / dependencies
+      description: What is explicitly out of scope, and anything this is gated on.
+      placeholder: |
+        Out: texture painting or resizing images.
+        Gated: works on Blender 4.2 LTS, the oldest supported version; the server stays dependency-free.
+    validations:
+      required: false
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Anything else — related issues/discussions, prior art, constraints to respect.
+    validations:
+      required: false

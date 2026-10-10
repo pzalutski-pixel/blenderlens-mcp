@@ -1,0 +1,15 @@
+BlenderLens
+Copyright 2026 Peter Zalutski
+
+This product includes software developed by Peter Zalutski.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+The add-on under src/blenderlens_mcp/addon runs inside Blender, which is
+licensed under the GNU General Public License. Apache 2.0 is compatible with
+GPL version 3, so the add-on may be distributed with Blender under
+GPL-3.0-or-later terms.

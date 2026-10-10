@@ -1,0 +1,21 @@
+schema_version = "1.0.0"
+
+id = "blenderlens"
+version = "0.2.0"
+name = "BlenderLens"
+tagline = "Let an AI agent build, check and export 3D assets over MCP"
+maintainer = "Peter Zalutski"
+type = "add-on"
+
+tags = ["Development", "Modeling", "Import-Export"]
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:Apache-2.0"]
+
+[permissions]
+network = "Listens on localhost for the BlenderLens MCP server"
+files = "Exports, imports, saves and renders the files the agent names"
+
+[build]
+paths_exclude_pattern = ["__pycache__/", "*.pyc"]

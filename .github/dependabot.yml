@@ -1,0 +1,11 @@
+version: 2
+
+# The actions are pinned to commit SHAs, which Dependabot can update: it rewrites the SHA and the
+# "# vX.Y.Z" comment together, so pinned actions do not go stale. Neither the server nor the npm package
+# has dependencies, so the actions are the only thing to keep current.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

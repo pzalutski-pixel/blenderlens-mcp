@@ -1,0 +1,163 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.pzalutski-pixel/blenderlens",
+  "title": "BlenderLens",
+  "description": "MCP server that lets AI agents build, check, preview and export game assets in Blender",
+  "repository": {
+    "url": "https://github.com/pzalutski-pixel/blenderlens-mcp",
+    "source": "github"
+  },
+  "version": "0.2.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "blenderlens-mcp",
+      "version": "0.2.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "BLENDER_BIN",
+          "description": "Blender executable, for background sessions, install-addon, and the check command on a .blend; found on PATH or in the usual install folders when unset",
+          "format": "filepath"
+        },
+        {
+          "name": "BLENDERLENS_MODE",
+          "description": "auto (the Blender window running the add-on if it responds, otherwise a background Blender), live, or background",
+          "format": "string",
+          "default": "auto",
+          "choices": ["auto", "live", "background"]
+        },
+        {
+          "name": "BLENDERLENS_HOST",
+          "description": "The address the server connects to for the BlenderLens add-on in live mode",
+          "format": "string",
+          "default": "127.0.0.1"
+        },
+        {
+          "name": "BLENDERLENS_PORT",
+          "description": "The add-on's port, as set in its preferences",
+          "format": "number",
+          "default": "9877"
+        },
+        {
+          "name": "BLENDERLENS_TOKEN",
+          "description": "Overrides the token the server reads from the add-on's connection file (live-<port>.json)",
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "BLENDERLENS_TIMEOUT",
+          "description": "Seconds to wait for one call; render_preview, run_python, run_script and bake_texture also take a timeout of their own",
+          "format": "number",
+          "default": "120"
+        },
+        {
+          "name": "BLENDERLENS_START_TIMEOUT",
+          "description": "Seconds to wait for a background Blender to come up",
+          "format": "number",
+          "default": "90"
+        },
+        {
+          "name": "BLENDERLENS_RENDER_DIR",
+          "description": "Where render_preview writes when given no path. When unset, blenderlens/renders in the system temp folder, where previews older than 7 days are removed when the server starts",
+          "format": "string"
+        },
+        {
+          "name": "BLENDERLENS_ALLOW_PYTHON",
+          "description": "0 leaves run_python and run_script out of the tool list and refuses them (not_allowed)",
+          "format": "string",
+          "default": "1",
+          "choices": ["1", "0"]
+        },
+        {
+          "name": "BLENDERLENS_ALLOWED_DIRS",
+          "description": "Folders that every path given to a tool must lie inside, separated by ; on Windows and : elsewhere. render_preview may also write to its render folder (BLENDERLENS_RENDER_DIR). When unset, paths are not confined",
+          "format": "string"
+        },
+        {
+          "name": "BLENDERLENS_RUNTIME_DIR",
+          "description": "Where the add-on writes live-<port>.json for the server, and where recovery copies go; Blender and the server must agree. Default: %LOCALAPPDATA%\\blenderlens on Windows, ~/Library/Application Support/blenderlens on macOS, and $XDG_STATE_HOME/blenderlens or ~/.local/state/blenderlens elsewhere",
+          "format": "filepath"
+        }
+      ]
+    },
+    {
+      "registryType": "pypi",
+      "identifier": "blenderlens-mcp",
+      "version": "0.2.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "BLENDER_BIN",
+          "description": "Blender executable, for background sessions, install-addon, and the check command on a .blend; found on PATH or in the usual install folders when unset",
+          "format": "filepath"
+        },
+        {
+          "name": "BLENDERLENS_MODE",
+          "description": "auto (the Blender window running the add-on if it responds, otherwise a background Blender), live, or background",
+          "format": "string",
+          "default": "auto",
+          "choices": ["auto", "live", "background"]
+        },
+        {
+          "name": "BLENDERLENS_HOST",
+          "description": "The address the server connects to for the BlenderLens add-on in live mode",
+          "format": "string",
+          "default": "127.0.0.1"
+        },
+        {
+          "name": "BLENDERLENS_PORT",
+          "description": "The add-on's port, as set in its preferences",
+          "format": "number",
+          "default": "9877"
+        },
+        {
+          "name": "BLENDERLENS_TOKEN",
+          "description": "Overrides the token the server reads from the add-on's connection file (live-<port>.json)",
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "BLENDERLENS_TIMEOUT",
+          "description": "Seconds to wait for one call; render_preview, run_python, run_script and bake_texture also take a timeout of their own",
+          "format": "number",
+          "default": "120"
+        },
+        {
+          "name": "BLENDERLENS_START_TIMEOUT",
+          "description": "Seconds to wait for a background Blender to come up",
+          "format": "number",
+          "default": "90"
+        },
+        {
+          "name": "BLENDERLENS_RENDER_DIR",
+          "description": "Where render_preview writes when given no path. When unset, blenderlens/renders in the system temp folder, where previews older than 7 days are removed when the server starts",
+          "format": "string"
+        },
+        {
+          "name": "BLENDERLENS_ALLOW_PYTHON",
+          "description": "0 leaves run_python and run_script out of the tool list and refuses them (not_allowed)",
+          "format": "string",
+          "default": "1",
+          "choices": ["1", "0"]
+        },
+        {
+          "name": "BLENDERLENS_ALLOWED_DIRS",
+          "description": "Folders that every path given to a tool must lie inside, separated by ; on Windows and : elsewhere. render_preview may also write to its render folder (BLENDERLENS_RENDER_DIR). When unset, paths are not confined",
+          "format": "string"
+        },
+        {
+          "name": "BLENDERLENS_RUNTIME_DIR",
+          "description": "Where the add-on writes live-<port>.json for the server, and where recovery copies go; Blender and the server must agree. Default: %LOCALAPPDATA%\\blenderlens on Windows, ~/Library/Application Support/blenderlens on macOS, and $XDG_STATE_HOME/blenderlens or ~/.local/state/blenderlens elsewhere",
+          "format": "filepath"
+        }
+      ]
+    }
+  ]
+}

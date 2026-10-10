@@ -1,0 +1,4 @@
+# The launcher's shebang must end in LF: "#!/usr/bin/env node\r" names a program called "node\r" on
+# Linux and macOS. A Windows checkout with core.autocrlf would otherwise write it with CRLF, and a
+# tarball packed there would carry it.
+bin/*.js text eol=lf

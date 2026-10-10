@@ -1,0 +1,43 @@
+{
+  "name": "blenderlens-mcp",
+  "mcpName": "io.github.pzalutski-pixel/blenderlens",
+  "version": "0.2.0",
+  "description": "MCP server that lets AI agents build, check, preview and export game assets in Blender",
+  "license": "Apache-2.0",
+  "author": "Peter Zalutski",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pzalutski-pixel/blenderlens-mcp.git"
+  },
+  "homepage": "https://github.com/pzalutski-pixel/blenderlens-mcp",
+  "bugs": {
+    "url": "https://github.com/pzalutski-pixel/blenderlens-mcp/issues"
+  },
+  "bin": {
+    "blenderlens-mcp": "./bin/blenderlens-mcp.js"
+  },
+  "files": [
+    "bin/",
+    "server/",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "blender",
+    "bpy",
+    "gltf",
+    "glb",
+    "godot",
+    "threejs",
+    "game-assets",
+    "3d-modeling",
+    "ai-agents",
+    "claude"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

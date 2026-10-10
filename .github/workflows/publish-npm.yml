@@ -1,0 +1,97 @@
+name: Publish to npm
+
+# Uploads one release's npm tarball to npm: the file attached to its GitHub release, which the release workflow
+# built, checked and attested. It runs when the release workflow succeeds, and by hand for a tag, so a failed
+# upload is retried on its own. A version npm already has is left as it is, so a retry is always safe.
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The released tag to publish (for example v0.2.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  publish-npm:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # npm provenance is signed with the workflow's OIDC token
+      attestations: read # gh attestation verify reads the release files' attestations
+    steps:
+      # The released commit, never the branch head: the checks below run the release kit as it was released.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: The tag and every manifest carry one version
+        env:
+          DISPATCHED_TAG: ${{ inputs.tag }}
+          RELEASED_TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          tag="${DISPATCHED_TAG:-$RELEASED_TAG}"
+          version="$(python .github/scripts/release_kit.py versions --tag "$tag")" || { echo "$version"; exit 1; }
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: The npm token is in place and npm accepts it
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::NPM_TOKEN is not set. Add it under the repository's Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          user="$(npm whoami)" || { echo "::error::npm does not accept NPM_TOKEN."; exit 1; }
+          echo "NPM_TOKEN belongs to the npm user $user."
+
+      - name: Skip a version npm already has
+        run: |
+          if [ "$(npm view "blenderlens-mcp@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+            echo "blenderlens-mcp $VERSION is already on npm; nothing to upload."
+            echo "PUBLISHED=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Download the release's npm tarball, and check it
+        if: env.PUBLISHED != '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tarball="blenderlens-mcp-$VERSION.tgz"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist --pattern "$tarball"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir sums --pattern SHA256SUMS
+          (cd dist && grep -E "  $tarball\$" ../sums/SHA256SUMS | sha256sum --check --strict -)
+          gh attestation verify "dist/$tarball" --repo "$GITHUB_REPOSITORY"
+          python .github/scripts/release_kit.py npm-tarball "dist/$tarball" --version "$VERSION"
+
+      # --provenance publishes a signed statement tying the tarball to this workflow run and this commit. The
+      # token reaches npm through an environment variable that Actions masks, never expanded inline in the command.
+      - name: Publish the checked tarball to npm
+        if: env.PUBLISHED != '1'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish "dist/blenderlens-mcp-$VERSION.tgz" --provenance --access public

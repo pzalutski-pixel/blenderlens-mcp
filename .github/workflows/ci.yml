@@ -1,0 +1,215 @@
+name: CI
+
+# On every push to main and every pull request into main, and by hand for any branch, this workflow lints the
+# code, runs the unit tests on three systems and four Python versions, and runs the integration tests against
+# real Blender builds. It also builds the wheel, the sdist, the npm tarball and the add-on zip, checks what each
+# holds, and installs and runs the wheel and the tarball in clean environments. release.yml requires a successful
+# run of this workflow for the commit it releases, so a tag is only ever released from a commit that passed here.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# No job in this workflow writes anything, so every job keeps read-only access to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Use bash on every runner, including Windows, where it is Git Bash, so each step reads the same everywhere.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+
+  test:
+    name: unit / ${{ matrix.os }} / py${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+      # The markers keep Blender out of this job, even on a runner that has Blender on PATH. The npm
+      # launcher's tests also run here, with the runner's own Node and this matrix entry's Python.
+      - run: python -m pytest -q -m "not integration and not live"
+
+  integration:
+    name: integration / ${{ matrix.os }} / Blender ${{ matrix.blender }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # Blender 4.2 LTS, the oldest supported version, and 5.0 run on Linux and Windows, and 5.0 runs on
+        # macOS. Each SHA-256 is from the release's own blender-<version>.sha256 file on download.blender.org.
+        include:
+          - os: ubuntu-latest
+            blender: '4.2.23'
+            file: blender-4.2.23-linux-x64.tar.xz
+            sha256: bea0eb3146be13eae6225409a117b215184f41b7f79e799f97cb3abb8f6dc404
+          - os: ubuntu-latest
+            blender: '5.0.1'
+            file: blender-5.0.1-linux-x64.tar.xz
+            sha256: 8019580ee1b7262e505f4196a00237ccf743c88d205b38d34201510676e60b09
+          - os: windows-latest
+            blender: '4.2.23'
+            file: blender-4.2.23-windows-x64.zip
+            sha256: 82e791475779a7342424a480bdde9a20b43710da9264c60346125aa16cd910cb
+          - os: windows-latest
+            blender: '5.0.1'
+            file: blender-5.0.1-windows-x64.zip
+            sha256: 921d77f6c505a35b2c2f6e67d4ad1c10b72418338ba0e0d3ea7f582a5e5fe46e
+          - os: macos-latest
+            blender: '5.0.1'
+            file: blender-5.0.1-macos-arm64.dmg
+            sha256: 102a81ddee5346c96339c6a529069a2d52df05f330eb9bfd431c8dd79fb4afb6
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - run: pip install -e ".[dev]"
+
+      # A Blender archive is 300 to 400 MB, so it is cached. The cache key includes the SHA-256, so a changed
+      # pin never reuses an old download, and fetch_blender.py checks the cached file again anyway.
+      - name: Cache the Blender download
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/blender-download
+          key: blender-${{ matrix.file }}-${{ matrix.sha256 }}
+
+      # Background mode needs no display, and Cycles on the CPU needs no GPU. But the Linux build
+      # links X11, XInput, xkbcommon and libGL whether or not it opens a window, and fails to start
+      # without them ("error while loading shared libraries"). The Workbench and EEVEE previews also
+      # need an OpenGL context: Xvfb with Mesa's software renderer gives them one.
+      - name: Install the libraries Blender loads (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            xvfb libx11-6 libxext6 libxi6 libxxf86vm1 libxfixes3 libxrender1 libxkbcommon0 \
+            libxkbcommon-x11-0 libsm6 libice6 libgl1 libegl1 libglx-mesa0 libgl1-mesa-dri
+
+      - name: Fetch Blender ${{ matrix.blender }}
+        run: >-
+          python .github/scripts/fetch_blender.py --file "${{ matrix.file }}" --sha256 "${{ matrix.sha256 }}"
+          --cache "$RUNNER_TEMP/blender-download" --dest "$RUNNER_TEMP/blender"
+
+      # fetch_blender.py has set BLENDER_BIN. Windows runners have no GPU and no OpenGL 4.3 driver, so the
+      # Workbench and EEVEE previews cannot get an OpenGL context there, so the test that renders with them,
+      # test_workbench_and_eevee_render_too, is left out.
+      # Cycles on the CPU, the default engine and the one every other render test uses, runs everywhere.
+      - name: Run the integration suite against Blender ${{ matrix.blender }}
+        run: |
+          case "$RUNNER_OS" in
+            Linux)   xvfb-run -a python -m pytest -q -m integration ;;
+            Windows) python -m pytest -q -m integration --deselect tests/test_render.py::test_workbench_and_eevee_render_too ;;
+            *)       python -m pytest -q -m integration ;;
+          esac
+
+  package:
+    name: package / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      HANDSHAKE: |
+        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}
+        {"jsonrpc":"2.0","method":"notifications/initialized"}
+        {"jsonrpc":"2.0","id":2,"method":"tools/list"}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      # The tool count every artifact must list is read from tools.py, never written into this file,
+      # so it follows the code.
+      - name: Read the version and the tool count from the code
+        run: |
+          version="$(python .github/scripts/release_kit.py versions)" || { echo "$version"; exit 1; }
+          tools="$(python .github/scripts/release_kit.py tool-count)"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "TOOLS=$tools" >> "$GITHUB_ENV"
+          echo "blenderlens-mcp $version, $tools tools"
+
+      - name: Build the wheel and the sdist, and check what they hold
+        run: |
+          python -m pip install build
+          python -m build --outdir dist
+          python .github/scripts/release_kit.py dist dist --version "$VERSION"
+
+      - name: Install the wheel into a clean venv and require a real MCP response
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel-venv"
+          if [ "$RUNNER_OS" = Windows ]; then bin="$RUNNER_TEMP/wheel-venv/Scripts"; else bin="$RUNNER_TEMP/wheel-venv/bin"; fi
+          "$bin/python" -m pip install dist/*.whl
+          echo "BIN=$bin" >> "$GITHUB_ENV"
+          cd "$RUNNER_TEMP"
+          printf '%s' "$HANDSHAKE" | "$bin/blenderlens-mcp" > wheel-responses.jsonl
+          head -c 400 wheel-responses.jsonl; echo
+          python "$GITHUB_WORKSPACE/.github/scripts/release_kit.py" mcp-responses wheel-responses.jsonl \
+            --tools "$TOOLS" --version "$VERSION"
+
+      - name: Build the add-on zip from the installed wheel and check it
+        run: |
+          "$BIN/blenderlens-mcp" build-addon -o "$RUNNER_TEMP/blenderlens-$VERSION.zip"
+          python .github/scripts/release_kit.py addon-zip "$RUNNER_TEMP/blenderlens-$VERSION.zip" --version "$VERSION"
+
+      # A tarball is only proven by running it. This step builds it exactly as release.yml does and reads
+      # the tarball itself, and the next step installs it into an empty folder and requires a real MCP
+      # response from the installed command.
+      - name: Build the npm tarball as the release does, and check what it holds
+        run: |
+          python .github/scripts/release_kit.py npm-bundle
+          (cd npm && npm pack --pack-destination "$RUNNER_TEMP")
+          tarball="$RUNNER_TEMP/blenderlens-mcp-$VERSION.tgz"
+          python .github/scripts/release_kit.py npm-tarball "$tarball" --version "$VERSION"
+          echo "TARBALL=$tarball" >> "$GITHUB_ENV"
+
+      - name: Install the npm tarball into a clean folder and require a real MCP response
+        run: |
+          mkdir -p "$RUNNER_TEMP/npm-smoke" && cd "$RUNNER_TEMP/npm-smoke"
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund "$TARBALL"
+          printf '%s' "$HANDSHAKE" | ./node_modules/.bin/blenderlens-mcp > npm-responses.jsonl
+          head -c 400 npm-responses.jsonl; echo
+          python "$GITHUB_WORKSPACE/.github/scripts/release_kit.py" mcp-responses npm-responses.jsonl \
+            --tools "$TOOLS" --version "$VERSION"

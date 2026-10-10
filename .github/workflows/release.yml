@@ -1,0 +1,297 @@
+name: Release
+
+# Pushing a v* tag on main builds one version and makes its GitHub release. Nothing is built until every check
+# has passed. The jobs are:
+#   verify          checks that the tagged commit is on main; that the tag, __version__, the add-on manifest,
+#                   npm/package.json and server.json agree; that the CHANGELOG has a dated entry; that CI passed
+#                   for this commit; that the npm and PyPI tokens are in place; and that the registry accepts
+#                   server.json
+#   test            runs the linter and the unit tests, after verify
+#   build           builds the wheel, the sdist, the npm tarball and the add-on zip, checks what each holds, and
+#                   installs and runs the wheel and the tarball in clean environments, after verify
+#   github-release  makes the GitHub release with all four files and their SHA256SUMS, each attested, after
+#                   test and build
+# When this workflow succeeds, publish-pypi.yml, publish-npm.yml and publish-mcp-registry.yml each publish the
+# release's files to one registry. Each also runs by hand for a tag, so a failed upload is retried on its own.
+on:
+  push:
+    tags: ['v*']
+
+# The workflow starts with read-only access, and each job that publishes asks for exactly the extra access it needs.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # mcp-publisher is a downloaded binary that is handed an OIDC token, so it is pinned to a release
+  # and checked against the SHA-256 that release published in registry_<version>_checksums.txt.
+  # "latest" would mean running whatever that repository ships on the day of a release.
+  MCP_PUBLISHER_VERSION: '1.8.1'
+  MCP_PUBLISHER_SHA256: 'a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    # Most of this time is spent waiting for CI, when the tag was pushed together with its commit.
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: read # gh run list, to find this commit's CI run
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Releases are made from main. A tag on a commit that never reached main would publish code that main does
+      # not hold.
+      - name: The tagged commit is on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
+            echo "::error::$GITHUB_REF_NAME names $GITHUB_SHA, which is not on main. Releases are made from main."
+            exit 1
+          fi
+
+      # PyPI reads the version from __init__.py, Blender from the add-on manifest, npm from package.json, and
+      # the MCP Registry from server.json. A tag that disagrees with any of them would publish two versions
+      # under one release.
+      - name: The tag and every manifest carry one version
+        run: python .github/scripts/release_kit.py versions --tag "$GITHUB_REF_NAME"
+
+      # A CHANGELOG heading of "Unreleased" marks an entry whose date is not set yet, so it fails here rather
+      # than shipping under a heading that means "draft".
+      - name: The CHANGELOG has a dated entry for this version
+        run: python .github/scripts/release_kit.py changelog "${GITHUB_REF_NAME#v}"
+
+      # A tag push runs no other workflow, and a tag can name any commit, including one whose tests never
+      # ran. CI runs on every push to main, so a commit on main has a run to find. When the tag was pushed
+      # together with its commit, CI is still running, so this step waits up to an hour.
+      - name: Require a successful CI run for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          deadline=$(( $(date +%s) + 3600 ))
+          while :; do
+            runs="$(gh run list --repo "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA" --workflow ci.yml \
+                      --limit 50 --json status,conclusion,databaseId)"
+            if [ "$(jq '[.[] | select(.conclusion == "success")] | length' <<< "$runs")" -gt 0 ]; then
+              echo "ci.yml passed for $GITHUB_SHA."
+              break
+            fi
+            if [ "$(jq '[.[] | select(.status != "completed")] | length' <<< "$runs")" -eq 0 ]; then
+              echo "::error::No successful ci.yml run for $GITHUB_SHA; refusing to release. Runs: $runs"
+              exit 1
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::ci.yml is still running for $GITHUB_SHA after an hour; re-run this job once it passes."
+              exit 1
+            fi
+            echo "ci.yml is still running for $GITHUB_SHA; checking again in a minute."
+            sleep 60
+          done
+
+      # The publish workflows need both tokens. They are checked here, before anything is built, so a missing or
+      # wrong token stops the release instead of leaving one registry published and another not.
+      - name: The npm token is in place and npm accepts it
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::NPM_TOKEN is not set. Add it under the repository's Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          user="$(npm whoami)" || { echo "::error::npm does not accept NPM_TOKEN."; exit 1; }
+          echo "NPM_TOKEN belongs to the npm user $user."
+
+      - name: The PyPI token is in place and is an API token for pypi.org
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: python .github/scripts/release_kit.py pypi-token
+
+      - name: Install mcp-publisher, pinned and checked
+        run: |
+          asset="mcp-publisher_linux_amd64.tar.gz"
+          curl -fsSL --retry 3 -o "$asset" \
+            "https://github.com/modelcontextprotocol/registry/releases/download/v${MCP_PUBLISHER_VERSION}/$asset"
+          echo "${MCP_PUBLISHER_SHA256}  $asset" | sha256sum --check --strict -
+          tar -xzf "$asset" mcp-publisher
+          ./mcp-publisher --version
+
+      # This runs before anything is published, so a server.json the registry would refuse cannot leave PyPI and
+      # npm published with no registry entry for them.
+      - name: The registry accepts server.json
+        run: ./mcp-publisher validate server.json
+
+  test:
+    needs: verify
+    name: unit / ${{ matrix.os }} / py${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.10', '3.13']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      # The integration tests ran against real Blender builds in the CI run that the verify job required.
+      - run: python -m pytest -q -m "not integration and not live"
+
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HANDSHAKE: |
+        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"release","version":"0"}}}
+        {"jsonrpc":"2.0","method":"notifications/initialized"}
+        {"jsonrpc":"2.0","id":2,"method":"tools/list"}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - name: Read the version and the tool count from the code
+        run: |
+          version="$(python .github/scripts/release_kit.py versions --tag "$GITHUB_REF_NAME")" || { echo "$version"; exit 1; }
+          tools="$(python .github/scripts/release_kit.py tool-count)"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "TOOLS=$tools" >> "$GITHUB_ENV"
+          echo "blenderlens-mcp $version, $tools tools"
+
+      - name: Build the wheel and the sdist, and check what they hold
+        run: |
+          python -m pip install build
+          python -m build --outdir dist
+          python .github/scripts/release_kit.py dist dist --version "$VERSION"
+
+      - name: Install the wheel into a clean venv and require a real MCP response
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel-venv"
+          bin="$RUNNER_TEMP/wheel-venv/bin"
+          "$bin/python" -m pip install dist/*.whl
+          echo "BIN=$bin" >> "$GITHUB_ENV"
+          cd "$RUNNER_TEMP"
+          printf '%s' "$HANDSHAKE" | "$bin/blenderlens-mcp" > wheel-responses.jsonl
+          python "$GITHUB_WORKSPACE/.github/scripts/release_kit.py" mcp-responses wheel-responses.jsonl \
+            --tools "$TOOLS" --version "$VERSION"
+
+      - name: Build the add-on zip from the installed wheel and check it
+        run: |
+          mkdir -p addon
+          "$BIN/blenderlens-mcp" build-addon -o "addon/blenderlens-$VERSION.zip"
+          python .github/scripts/release_kit.py addon-zip "addon/blenderlens-$VERSION.zip" --version "$VERSION"
+
+      # This uses the same bundle step and checks as CI's package job, and the tarball checked here is the
+      # one that publish-npm.yml uploads, from the GitHub release.
+      - name: Build the npm tarball, and check what it holds
+        run: |
+          python .github/scripts/release_kit.py npm-bundle
+          mkdir -p npm-dist
+          (cd npm && npm pack --pack-destination ../npm-dist)
+          tarball="npm-dist/blenderlens-mcp-$VERSION.tgz"
+          python .github/scripts/release_kit.py npm-tarball "$tarball" --version "$VERSION"
+
+      - name: Install the npm tarball into a clean folder and require a real MCP response
+        run: |
+          tarball="$GITHUB_WORKSPACE/npm-dist/blenderlens-mcp-$VERSION.tgz"
+          mkdir -p "$RUNNER_TEMP/npm-smoke" && cd "$RUNNER_TEMP/npm-smoke"
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund "$tarball"
+          printf '%s' "$HANDSHAKE" | ./node_modules/.bin/blenderlens-mcp > npm-responses.jsonl
+          python "$GITHUB_WORKSPACE/.github/scripts/release_kit.py" mcp-responses npm-responses.jsonl \
+            --tools "$TOOLS" --version "$VERSION"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: python-dist
+          path: dist/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: npm-tarball
+          path: npm-dist/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: addon-zip
+          path: addon/
+          if-no-files-found: error
+
+  # The GitHub release holds every file a registry receives, so the publish workflows upload exactly these bytes.
+  # Blender users download the add-on zip from it. Each file, and SHA256SUMS, carries a build provenance
+  # attestation that `gh attestation verify` checks.
+  github-release:
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # gh release create
+      id-token: write # attest-build-provenance signs with the workflow's OIDC token
+      attestations: write # and records the attestation against this repository
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: addon-zip
+          path: assets/
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-dist
+          path: assets/
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: npm-tarball
+          path: assets/
+      - name: List the files' SHA-256 sums
+        run: (cd assets && sha256sum -- * > SHA256SUMS && cat SHA256SUMS)
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            assets/*.zip
+            assets/*.whl
+            assets/*.tar.gz
+            assets/*.tgz
+            assets/SHA256SUMS
+      - name: Create the GitHub release with the add-on zip, the wheel, the sdist and the npm tarball
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          python .github/scripts/release_kit.py notes "$version" > notes.md
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "BlenderLens $version" --notes-file notes.md \
+            "assets/blenderlens-$version.zip" assets/*.whl assets/*.tar.gz assets/*.tgz assets/SHA256SUMS

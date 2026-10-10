@@ -1,0 +1,86 @@
+name: Bug
+description: Something behaves incorrectly. Fill this so the defect can be reproduced.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The goal is a defect we can reproduce. For BlenderLens the single most valuable thing is the tool calls that lead to it from an empty scene (create_file first), or a small .blend or .glb that triggers it.
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One sentence — what's wrong.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Exact, ordered, deterministic steps.
+      placeholder: |
+        1. Call create_file.
+        2. Call create_object with {"kind": "cube", "name": "Crate", "size": 0.5}.
+        3. Call export_glb with {"path": "crate.glb", "target": "godot"}.
+        4. Observe the returned warnings.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: input
+    id: repro-file
+    attributes:
+      label: File or minimal reproducible example
+      description: A link to a small .blend or .glb that triggers the issue, or to the list of tool calls. The single highest-value field.
+      placeholder: "https://gist.github.com/you/minimal-repro"
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: The conditions needed to reproduce.
+      placeholder: |
+        BlenderLens version (`blenderlens-mcp --version`):
+        Install method (uvx blenderlens-mcp / npx blenderlens-mcp / pip):
+        Mode (live: the Blender window running the add-on / background):
+        Blender version (`blender --version`, or Help > About):
+        OS + exact version + arch (e.g. Windows 11 24H2 x64):
+        Python version (`python --version`):
+        GPU and driver, for render_preview issues:
+        MCP client + launch config (command + args + env):
+    validations:
+      required: true
+
+  - type: textarea
+    id: tool-io
+    attributes:
+      label: Tool request and response
+      description: The exact MCP tool call and the response you received, refusals included (error, kind, hint).
+      render: json
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: The server's stderr, Blender's console in live mode, related issues, anything else.
+    validations:
+      required: false

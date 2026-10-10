@@ -1,0 +1,122 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+# The version is set in __init__.py. The add-on manifest, npm/package.json and server.json repeat it, and
+# `python .github/scripts/release_kit.py versions` checks that they all agree.
+path = "src/blenderlens_mcp/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+# The source package holds only these paths: the code, the tests and the files they read, the documentation,
+# the example script and the example rule set. .github/scripts/release_kit.py checks a built sdist against the
+# same list.
+only-include = [
+    ".github",
+    "docs",
+    "examples/build_lantern.py",
+    "examples/rules.json",
+    "npm",
+    "src",
+    "tests",
+    ".gitignore",
+    "CHANGELOG.md",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "pyproject.toml",
+    "server.json",
+]
+
+[project]
+name = "blenderlens-mcp"
+dynamic = ["version"]
+description = "MCP server that lets AI agents build, check, preview and export game assets in Blender"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{name = "Peter Zalutski"}]
+keywords = [
+    "mcp", "mcp-server", "blender", "bpy", "gltf", "glb", "godot", "3d-modeling", "ai-agents", "claude",
+    "developer-tools",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+    "Operating System :: OS Independent",
+]
+dependencies = []
+
+[project.scripts]
+blenderlens-mcp = "blenderlens_mcp.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/pzalutski-pixel/blenderlens-mcp"
+Repository = "https://github.com/pzalutski-pixel/blenderlens-mcp"
+Issues = "https://github.com/pzalutski-pixel/blenderlens-mcp/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-timeout>=2.3.0",
+    # From 7.0, pytest-cov leaves measuring subprocesses to coverage itself, through `patch = ["subprocess"]` below.
+    "pytest-cov>=7.0.0",
+    # Only for the test that parses the workflow files as YAML; it skips without it.
+    "pyyaml>=6.0",
+    "ruff>=0.7.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Import this checkout's code, never a copy installed by pip. tests/conftest.py does the same for the server
+# subprocesses that the tests start.
+pythonpath = ["src"]
+# No test should hang the suite; every Blender call has its own deadline as well.
+timeout = 300
+markers = [
+    "integration: requires a real Blender binary (skipped when none is found)",
+    "live: opens a Blender window with the add-on running; opt in with BLENDERLENS_TEST_LIVE=1",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+# BLE flags every broad except. The server and the add-on catch everything at their edges on purpose, and each
+# such line is marked `# noqa: BLE001`, with a comment after it that says why the except is broad.
+select = ["E", "F", "I", "B", "BLE", "UP", "RUF"]
+
+[tool.ruff.lint.isort]
+# The add-on runs on Blender's own Python, 3.11 or later, where tomllib is standard.
+extra-standard-library = ["tomllib"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+[tool.coverage.run]
+source = ["blenderlens_mcp"]
+# The server is exercised most thoroughly by tests that start it as a real subprocess over stdio.
+# Without parallel mode and the subprocess patch none of that counts, and server.py and session.py
+# look far less covered than they are. Combine with `coverage combine` before reporting.
+parallel = true
+patch = ["subprocess"]
+concurrency = ["thread"]
+sigterm = true
+# The add-on and background.py run inside Blender's own Python, which coverage cannot reach; they
+# would only ever read as unrun. The integration suite is what covers them.
+omit = ["*/blenderlens_mcp/addon/*", "*/blenderlens_mcp/background.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
