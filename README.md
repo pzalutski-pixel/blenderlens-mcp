@@ -9,6 +9,14 @@ An MCP server that lets an AI agent work in **Blender itself**: build and shape 
 operations, look at a rendered preview, check the asset against a triangle budget and your project's rules, and
 export a `.glb` that is read back from disk and judged for Godot or three.js.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/pzalutski-pixel/blenderlens-mcp/main/docs/media/teddy-forest.gif"
+       alt="Two teddy bears in a forest: one picks a flower and gives it to the other, and they walk off together"
+       width="400">
+</p>
+<p align="center"><i>A short animated scene that an AI agent made in Blender through BlenderLens, shown at double
+speed.</i></p>
+
 ## Why
 
 An agent that models through Blender Python is working blind. It cannot see what it built, cannot tell whether

@@ -27,6 +27,8 @@ only-include = [
     "pyproject.toml",
     "server.json",
 ]
+# The README's animation is shown from GitHub, so the source package leaves it out.
+exclude = ["docs/media"]
 
 [project]
 name = "blenderlens-mcp"
