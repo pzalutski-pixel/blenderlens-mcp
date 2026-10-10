@@ -796,10 +796,11 @@ def test_pypi_is_published_with_its_token_after_checking_it():
 
 def test_npm_is_published_with_provenance_and_its_token_after_checking_it():
     job = workflow("publish-npm.yml")
-    assert "npm whoami" in job and job.index("npm whoami") < job.index("npm publish")
-    assert "npm publish" in job and "--provenance" in job and "id-token: write" in job
+    assert "npm whoami" in job and job.index("npm whoami") < job.index('npm stage publish "')
+    assert "npm install --global npm@11.17.0" in job, "npm stage publish needs npm 11.15.0 or later"
+    assert "--provenance" in job and "id-token: write" in job
     # npm reads a path without ./ (dist/name.tgz) as the GitHub repository owner/name.
-    assert re.search(r'npm publish "\./', job), "npm would read the tarball path as a GitHub repository"
+    assert re.search(r'npm stage publish "\./', job), "npm would read the tarball path as a GitHub repository"
     assert "NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}" in job
     assert 'npm view "blenderlens-mcp@$VERSION" version' in job
 

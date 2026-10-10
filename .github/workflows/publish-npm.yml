@@ -1,8 +1,10 @@
 name: Publish to npm
 
-# Uploads one release's npm tarball to npm: the file attached to its GitHub release, which the release workflow
-# built, checked and attested. It runs when the release workflow succeeds, and by hand for a tag, so a failed
-# upload is retried on its own. A version npm already has is left as it is, so a retry is always safe.
+# Stages one release's npm tarball on npm: the file attached to its GitHub release, which the release workflow
+# built, checked and attested. npm lets a token stage a publish but not make it live: a maintainer approves the
+# staged version on npmjs.com (Staged Packages, Approve) with two-factor authentication. It runs when the release
+# workflow succeeds, and by hand for a tag, so a failed upload is retried on its own. A version npm already has is
+# left as it is, so a retry is always safe.
 on:
   workflow_run:
     workflows: [Release]
@@ -48,6 +50,10 @@ jobs:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
+      # npm stage publish needs npm 11.15.0 or later; the one Node bundles may be older.
+      - name: Use an npm that can stage a publish
+        run: npm install --global npm@11.17.0
+
       - name: The tag and every manifest carry one version
         env:
           DISPATCHED_TAG: ${{ inputs.tag }}
@@ -91,8 +97,11 @@ jobs:
       # --provenance publishes a signed statement tying the tarball to this workflow run and this commit. The
       # token reaches npm through an environment variable that Actions masks, never expanded inline in the command.
       # The path starts with ./ because npm reads a bare dist/name.tgz as a GitHub repository, owner/name.
-      - name: Publish the checked tarball to npm
+      - name: Stage the checked tarball on npm
         if: env.PUBLISHED != '1'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish "./dist/blenderlens-mcp-$VERSION.tgz" --provenance --access public
+        run: |
+          npm stage publish "./dist/blenderlens-mcp-$VERSION.tgz" --provenance --access public
+          npm stage list blenderlens-mcp || true
+          echo "::notice::blenderlens-mcp $VERSION is staged on npm. Approve it on npmjs.com (Staged Packages, Approve)."

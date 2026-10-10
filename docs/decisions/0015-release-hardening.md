@@ -64,7 +64,9 @@ manifest carry one version, and skips a version its registry already has, so a r
   against `SHA256SUMS`, their attestations and `release_kit.py dist`, and uploads them with the pinned
   `pypa/gh-action-pypi-publish` action and the `PYPI_API_TOKEN` secret.
 - `publish-npm.yml` checks the token with `npm whoami`, downloads the tarball, checks it the same way and with
-  `release_kit.py npm-tarball`, and runs `npm publish <the checked tarball> --provenance`.
+  `release_kit.py npm-tarball`, and runs `npm stage publish <the checked tarball> --provenance`. npm lets a token
+  stage a publish but not make it live, so a maintainer approves the staged version on npmjs.com with two-factor
+  authentication.
 - `publish-mcp-registry.yml` waits, up to half an hour, until PyPI and npm both have the version, because the
   registry accepts an entry only for packages that exist. It then publishes with `mcp-publisher` 1.8.1, the same
   pinned version and SHA-256 as the release's check, logged in through GitHub OIDC, and retries while the
@@ -76,7 +78,7 @@ manifest carry one version, and skips a version its registry already has, so a r
 
 **Publishing also needs, outside the repository:**
 - a `PYPI_API_TOKEN` secret holding a PyPI API token;
-- an `NPM_TOKEN` secret holding an npm token that may publish the package.
+- an `NPM_TOKEN` secret holding an npm token that may stage a publish of the package.
 
 The registry needs nothing: GitHub OIDC proves the `io.github.pzalutski-pixel` namespace.
 
