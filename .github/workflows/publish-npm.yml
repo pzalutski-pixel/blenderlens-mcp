@@ -90,8 +90,9 @@ jobs:
 
       # --provenance publishes a signed statement tying the tarball to this workflow run and this commit. The
       # token reaches npm through an environment variable that Actions masks, never expanded inline in the command.
+      # The path starts with ./ because npm reads a bare dist/name.tgz as a GitHub repository, owner/name.
       - name: Publish the checked tarball to npm
         if: env.PUBLISHED != '1'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish "dist/blenderlens-mcp-$VERSION.tgz" --provenance --access public
+        run: npm publish "./dist/blenderlens-mcp-$VERSION.tgz" --provenance --access public
