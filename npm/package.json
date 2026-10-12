@@ -2,7 +2,7 @@
   "name": "blenderlens-mcp",
   "mcpName": "io.github.pzalutski-pixel/blenderlens",
   "version": "0.2.0",
-  "description": "MCP server that lets AI agents build, check, preview and export game assets in Blender",
+  "description": "MCP server that lets AI agents model, texture, animate, check and export in Blender",
   "license": "Apache-2.0",
   "author": "Peter Zalutski",
   "repository": {

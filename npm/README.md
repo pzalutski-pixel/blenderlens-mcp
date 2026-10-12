@@ -4,10 +4,18 @@
 [![PyPI](https://img.shields.io/pypi/v/blenderlens-mcp.svg)](https://pypi.org/project/blenderlens-mcp/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/pzalutski-pixel/blenderlens-mcp/blob/main/LICENSE)
 
-An MCP server that lets an AI agent build 3D assets in **Blender itself**. The agent builds with Blender's own
-operations, looks at rendered previews, checks its work, and exports a `.glb` file that Godot 4 and three.js load.
-After each export, the server reads the written file back and reports what it contains. Everything runs on your
-machine, and nothing is sent anywhere.
+An MCP server that lets an AI agent model, texture and animate in **Blender**, from a single object to a whole
+animated scene. You can watch the agent work in your own Blender window and undo anything it does, or let it work in
+a background Blender with no window. The result is an ordinary `.blend` file, or an export in the format you need,
+which the server reads back to report what it holds. Everything runs on your machine, and nothing is sent anywhere.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/pzalutski-pixel/blenderlens-mcp/main/docs/media/teddy-forest.gif"
+       alt="Two teddy bears in a forest: one picks a flower and gives it to the other, and they walk off together"
+       width="400">
+</p>
+<p align="center"><i>A short animated scene that an AI agent made in Blender through BlenderLens, shown at double
+speed.</i></p>
 
 ## Requirements
 
@@ -57,21 +65,21 @@ installation. The same server is available from PyPI: `uvx blenderlens-mcp`.
 
 - **Session:** `get_status`, `open_session`, `close_session`
 - **Inspecting:** `get_scene`, `get_object`, `get_mesh`, `list_materials`
-- **Checking:** `check_asset` (geometry, UVs, textures, a triangle budget and a project's own rules, checked as
-  the asset will be exported), `measure_objects`
+- **Checking:** `check_asset` (geometry, UVs, textures, and optionally a triangle budget and a project's own
+  rules, checked as the model will be exported), `measure_objects`
 - **Building:** `create_object` (including tubes, lathed shapes and text), `create_mesh`, `edit_mesh`,
   `add_modifier`, `set_modifier`, `apply_modifier`, `remove_modifier`, `set_material`, `set_vertex_color`,
   `unwrap_uv`, `join_objects`, `animate_object`, `create_collision`, `bake_texture`
 - **Arranging:** `set_transform` (which can drop an object onto what is below it), `apply_transform` (which can
   move the origin), `set_parent`, `set_collection`, `set_object`, `duplicate_object`, `delete_object`
-- **Files:** `export_glb` for Godot or three.js (written, read back from disk, and checked for problems in the
-  target engine), `export_file` (FBX, OBJ, STL, PLY, USD), `import_file`, `save_file`, `open_file`, `create_file`
+- **Files:** `save_file`, `open_file`, `create_file`, `import_file`, `export_file` (FBX, OBJ, STL, PLY, USD,
+  read back after writing), `export_glb` (glTF, read back from disk, with warnings for Godot or three.js)
 - **Seeing:** `render_preview`, including sheets of several views
 - **Python:** `run_python`, `run_script`
 - **Undoing:** `undo_change`
 
-To check an asset without an agent, for example in CI:
-`npx -y blenderlens-mcp check asset.glb --budget 5000 --target godot`.
+To check a model without an agent, for example in a build pipeline:
+`npx -y blenderlens-mcp check model.glb --budget 5000 --rules rules.json`.
 
 Units are metres, and rotations are in degrees. When a tool refuses a call, it returns a structured error with an
 `exit` code, a `kind` and a `hint`.
