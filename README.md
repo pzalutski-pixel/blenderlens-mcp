@@ -307,9 +307,9 @@ each kind), `kind` and `hint` (what to do about it).
 ```mermaid
 flowchart TD
     Agent["AI Agent"]
-    BL["<b>BlenderLens</b><br/>MCP server · JSON-RPC 2.0<br/>Python 3.10+ · no dependencies"]
+    BL["<b>BlenderLens</b><br/>MCP server<br/>Python 3.10+<br/>no dependencies"]
 
-    Agent <-- "stdio" --> BL
+    Agent <-- "stdio, JSON-RPC 2.0" --> BL
 
     BL -- "TCP 9877<br/>with its token" --> Window
     BL -- "starts and owns" --> Background
